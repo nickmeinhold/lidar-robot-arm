@@ -17,7 +17,7 @@ struct UncheckedSendableBox<T>: @unchecked Sendable {
 ///   4. Wrist pitch
 ///   5. Wrist roll
 ///   6. Gripper (open/close)
-struct ArmState {
+struct ArmState: Sendable {
     /// Joint angles in radians, mapped to the 6 SO-100 servos.
     var shoulderYaw: Float = 0      // Base rotation: left/right
     var shoulderPitch: Float = 0    // Shoulder: up/down
@@ -47,6 +47,28 @@ struct ArmState {
             "wrist_roll": wristRoll,
             "gripper": gripperOpenAmount,
         ]
+    }
+
+    /// Serialize to JSON for WebSocket transmission.
+    ///
+    /// Returns a JSON string with message type, timestamp, angles, and tracking state.
+    /// Returns `nil` if serialization fails (shouldn't happen with these types).
+    func toJSON() -> String? {
+        let dict: [String: Any] = [
+            "type": "arm_state",
+            "timestamp": Date().timeIntervalSince1970,
+            "angles": anglesDictionary,
+            "tracking": [
+                "body": isBodyTracked,
+                "hand": isHandTracked,
+            ],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        return json
     }
 
     /// Angles converted to degrees for display.

@@ -48,6 +48,20 @@ struct ContentView: View {
             Divider()
                 .background(Color.white)
 
+            // Network latency to control server.
+            HStack {
+                Text("Latency")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
+                Spacer()
+                Text(latencyText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.white)
+            }
+
+            Divider()
+                .background(Color.white)
+
             gripIndicator
         }
         .padding(12)
@@ -92,6 +106,10 @@ struct ContentView: View {
                 label: "Hand",
                 active: bodyTracker.armState.isHandTracked
             )
+            ConnectionStatusView(
+                webSocketClient: bodyTracker.webSocketClient,
+                bonjourDiscovery: bodyTracker.bonjourDiscovery
+            )
             Spacer()
             armToggle
         }
@@ -123,6 +141,13 @@ struct ContentView: View {
                 .background(Color.blue.opacity(0.6))
                 .cornerRadius(8)
         }
+    }
+
+    private var latencyText: String {
+        if let ms = bodyTracker.webSocketClient.latencyMs {
+            return String(format: "%.0fms", ms)
+        }
+        return "--"
     }
 
     private var gripColor: Color {

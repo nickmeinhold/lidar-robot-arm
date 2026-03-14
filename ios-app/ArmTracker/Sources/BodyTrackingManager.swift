@@ -26,6 +26,12 @@ final class BodyTrackingManager: NSObject, ObservableObject {
     /// The hand pose detector runs on the same camera frames.
     let handPoseDetector = HandPoseDetector()
 
+    /// WebSocket client for streaming arm state to the control server.
+    @Published var webSocketClient = WebSocketClient()
+
+    /// Bonjour discovery for finding control servers on the local network.
+    @Published var bonjourDiscovery = BonjourDiscovery()
+
     private var cancellables = Set<AnyCancellable>()
 
     override init() {
@@ -46,6 +52,23 @@ final class BodyTrackingManager: NSObject, ObservableObject {
                 self?.armState.isHandTracked = detected
             }
             .store(in: &cancellables)
+
+        // Throttle arm state from ~60Hz to ~30Hz and send over WebSocket.
+        // 30Hz is plenty for servo control and halves network bandwidth.
+        $armState
+            .throttle(for: .milliseconds(33), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] state in
+                self?.webSocketClient.send(state)
+            }
+            .store(in: &cancellables)
+
+        // Auto-connect when Bonjour discovers a server.
+        bonjourDiscovery.$selectedServerURL
+            .compactMap { $0 }
+            .sink { [weak self] url in
+                self?.webSocketClient.connect(to: url)
+            }
+            .store(in: &cancellables)
     }
 
     /// Start the AR body tracking session.
@@ -64,12 +87,15 @@ final class BodyTrackingManager: NSObject, ObservableObject {
         }
 
         arSession.run(config)
+        bonjourDiscovery.startBrowsing()
         print("AR body tracking started.")
     }
 
-    /// Stop the AR session.
+    /// Stop the AR session and network services.
     func stopTracking() {
         arSession.pause()
+        webSocketClient.disconnect()
+        bonjourDiscovery.stopBrowsing()
     }
 
     /// Process body anchor updates — extracts arm joint angles.

@@ -8,19 +8,25 @@
 
 /* Begin PBXBuildFile section */
 		2FD02C8EFA0DB213C6912BDC /* ArmTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8C8E0B34BE8F30133701E6B /* ArmTrackerApp.swift */; };
+		346855572DB2119884BD542A /* ConnectionStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42944E98B39AC40A0233C948 /* ConnectionStatusView.swift */; };
 		4FF814A9784351422BD77B02 /* HandPoseDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3FEB641EB88C43D4332D1B /* HandPoseDetector.swift */; };
+		5311B30658A888D5B34C543D /* BonjourDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95106AF58B1689A75A64D24D /* BonjourDiscovery.swift */; };
 		53F32EAE59DF89BF76756155 /* JointAngleCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F09B402747F0C4AD14CF487 /* JointAngleCalculator.swift */; };
 		68965B8999783CEC432DBBD3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BC550934A82A4D06DCB8F8 /* ContentView.swift */; };
 		768550C991968A21588AD06E /* ARViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD1C29BBC5F390F5CA6D9AF /* ARViewContainer.swift */; };
+		78DCFD07B821B18DA1E15D10 /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFCBD9F3A9FA3C9F31D9EF4 /* WebSocketClient.swift */; };
 		9B69BECC12A965B6898F3C3A /* BodyTrackingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5909AAD8508F297FB962ADF8 /* BodyTrackingManager.swift */; };
 		DA2622EB6CFC0C253B519278 /* ArmState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFE507864E539591A72CA00 /* ArmState.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		2D3FEB641EB88C43D4332D1B /* HandPoseDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandPoseDetector.swift; sourceTree = "<group>"; };
+		3FFCBD9F3A9FA3C9F31D9EF4 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
+		42944E98B39AC40A0233C948 /* ConnectionStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusView.swift; sourceTree = "<group>"; };
 		4F09B402747F0C4AD14CF487 /* JointAngleCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JointAngleCalculator.swift; sourceTree = "<group>"; };
 		5909AAD8508F297FB962ADF8 /* BodyTrackingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTrackingManager.swift; sourceTree = "<group>"; };
 		5BFE507864E539591A72CA00 /* ArmState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmState.swift; sourceTree = "<group>"; };
+		95106AF58B1689A75A64D24D /* BonjourDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourDiscovery.swift; sourceTree = "<group>"; };
 		B7BC550934A82A4D06DCB8F8 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F8C8E0B34BE8F30133701E6B /* ArmTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmTrackerApp.swift; sourceTree = "<group>"; };
 		FB5DCA5968A0C1CA73CBE767 /* ArmTracker.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ArmTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -35,9 +41,12 @@
 				F8C8E0B34BE8F30133701E6B /* ArmTrackerApp.swift */,
 				FBD1C29BBC5F390F5CA6D9AF /* ARViewContainer.swift */,
 				5909AAD8508F297FB962ADF8 /* BodyTrackingManager.swift */,
+				95106AF58B1689A75A64D24D /* BonjourDiscovery.swift */,
+				42944E98B39AC40A0233C948 /* ConnectionStatusView.swift */,
 				B7BC550934A82A4D06DCB8F8 /* ContentView.swift */,
 				2D3FEB641EB88C43D4332D1B /* HandPoseDetector.swift */,
 				4F09B402747F0C4AD14CF487 /* JointAngleCalculator.swift */,
+				3FFCBD9F3A9FA3C9F31D9EF4 /* WebSocketClient.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -96,7 +105,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					345B94F79A4CCCA87C92F9F2 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = SPL85G447K;
 					};
 				};
 			};
@@ -128,9 +137,12 @@
 				DA2622EB6CFC0C253B519278 /* ArmState.swift in Sources */,
 				2FD02C8EFA0DB213C6912BDC /* ArmTrackerApp.swift in Sources */,
 				9B69BECC12A965B6898F3C3A /* BodyTrackingManager.swift in Sources */,
+				5311B30658A888D5B34C543D /* BonjourDiscovery.swift in Sources */,
+				346855572DB2119884BD542A /* ConnectionStatusView.swift in Sources */,
 				68965B8999783CEC432DBBD3 /* ContentView.swift in Sources */,
 				4FF814A9784351422BD77B02 /* HandPoseDetector.swift in Sources */,
 				53F32EAE59DF89BF76756155 /* JointAngleCalculator.swift in Sources */,
+				78DCFD07B821B18DA1E15D10 /* WebSocketClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,7 +154,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = SPL85G447K;
 				INFOPLIST_FILE = ArmTracker/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -160,7 +172,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = SPL85G447K;
 				INFOPLIST_FILE = ArmTracker/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
