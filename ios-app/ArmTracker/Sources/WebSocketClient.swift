@@ -68,7 +68,7 @@ final class WebSocketClient: ObservableObject {
     /// This is intentional — for real-time servo control, the latest
     /// state is always more valuable than a queued stale state.
     func send(_ state: ArmState) {
-        guard connectionState == .connected, !isSending else { return }
+        guard connectionState != .disconnected, !isSending else { return }
         guard let json = state.toJSON() else { return }
 
         isSending = true
@@ -94,10 +94,7 @@ final class WebSocketClient: ObservableObject {
         task.resume()
 
         // URLSessionWebSocketTask doesn't have a connect callback —
-        // a successful first receive or send confirms the connection.
-        connectionState = .connected
-        reconnectDelay = Self.initialReconnectDelay
-
+        // stay in .connecting until the first successful receive confirms it.
         receiveLoop()
     }
 
@@ -108,6 +105,10 @@ final class WebSocketClient: ObservableObject {
                 guard let self else { return }
                 switch result {
                 case .success(let message):
+                    if self.connectionState != .connected {
+                        self.connectionState = .connected
+                        self.reconnectDelay = Self.initialReconnectDelay
+                    }
                     self.handleMessage(message)
                     self.receiveLoop() // Continue listening
                 case .failure(let error):

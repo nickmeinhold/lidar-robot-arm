@@ -26,5 +26,15 @@
 	<string>ArmTracker needs camera access for AR body tracking and hand pose detection.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ArmTracker uses the local network to discover and connect to the robot control server.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arkit</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
 </dict>
 </plist>

@@ -18,6 +18,11 @@ targets:
         NSBonjourServices:
           - _armtracker._tcp
         NSLocalNetworkUsageDescription: "ArmTracker uses the local network to discover and connect to the robot control server."
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - arkit
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
