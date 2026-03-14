@@ -13,8 +13,13 @@ targets:
       - path: ArmTracker/Sources
     info:
       path: ArmTracker/Resources/Info.plist
+      properties:
+        NSCameraUsageDescription: "ArmTracker needs camera access for AR body tracking and hand pose detection."
+        NSBonjourServices:
+          - _armtracker._tcp
+        NSLocalNetworkUsageDescription: "ArmTracker uses the local network to discover and connect to the robot control server."
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "6.0"
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: "SPL85G447K"
