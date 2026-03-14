@@ -1,0 +1,20 @@
+name: ArmTracker
+options:
+  bundleIdPrefix: com.armtracker
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+targets:
+  ArmTracker:
+    type: application
+    platform: iOS
+    sources:
+      - path: ArmTracker/Sources
+    info:
+      path: ArmTracker/Resources/Info.plist
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "6.0"
+        DEVELOPMENT_TEAM: ""
