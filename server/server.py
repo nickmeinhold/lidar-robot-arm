@@ -23,7 +23,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
 from .arm_controller import ArmController, ConsoleArmController
-from .discovery import advertise, _get_lan_ip
+from .discovery import advertise, get_lan_ip
 from .protocol import make_pong, parse_message
 
 log = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ class ArmTrackerServer:
             self._active_client = None
             try:
                 await old.close()
-            except Exception:
+            except (websockets.ConnectionClosed, OSError):
                 pass  # old connection may already be dead
 
         self._active_client = connection
@@ -123,7 +123,6 @@ class ArmTrackerServer:
 
                 # Broadcast to all connected viewers
                 if self._viewers:
-                    log.debug("Broadcasting to %d viewers", len(self._viewers))
                     websockets.broadcast(self._viewers, raw)
         except websockets.ConnectionClosed:
             log.info("Controller disconnected: %s", remote)
@@ -157,7 +156,7 @@ async def main(
         if use_bonjour:
             ip = await stack.enter_async_context(advertise(port))
         else:
-            ip = _get_lan_ip()
+            ip = get_lan_ip()
 
         server: Server = await stack.enter_async_context(
             websockets.serve(

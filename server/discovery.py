@@ -20,7 +20,7 @@ SERVICE_TYPE = "_armtracker._tcp.local."
 SERVICE_NAME = f"ArmTracker Server.{SERVICE_TYPE}"
 
 
-def _get_lan_ip() -> str:
+def get_lan_ip() -> str:
     """Return this machine's LAN IP address.
 
     Opens a UDP socket to a public DNS address (no data sent) so the OS
@@ -47,7 +47,7 @@ async def advertise(port: int) -> AsyncIterator[str]:
             print(f"Advertising on {ip}:{port}")
             ...
     """
-    ip = _get_lan_ip()
+    ip = get_lan_ip()
     info = AsyncServiceInfo(
         SERVICE_TYPE,
         SERVICE_NAME,
@@ -58,7 +58,7 @@ async def advertise(port: int) -> AsyncIterator[str]:
 
     azc = AsyncZeroconf(ip_version=IPVersion.V4Only)
     try:
-        await azc.async_register_service(info)
+        await azc.async_register_service(info, allow_name_change=True)
         log.info("Bonjour: registered %s on %s:%d", SERVICE_NAME, ip, port)
         yield ip
     finally:
