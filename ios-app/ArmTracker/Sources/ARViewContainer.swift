@@ -16,8 +16,12 @@ struct ARViewContainer: UIViewRepresentable {
         // This lets us display the camera feed while tracking runs.
         arView.session = bodyTrackingManager.arSession
 
-        // Start body tracking.
-        bodyTrackingManager.startTracking()
+        // Defer startTracking() out of the view creation cycle to avoid
+        // "Publishing changes from within view updates" — Bonjour and
+        // ARSession callbacks update @Published properties immediately.
+        DispatchQueue.main.async {
+            bodyTrackingManager.startTracking()
+        }
 
         return arView
     }

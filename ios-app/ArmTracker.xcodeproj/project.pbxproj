@@ -29,7 +29,7 @@
 		95106AF58B1689A75A64D24D /* BonjourDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourDiscovery.swift; sourceTree = "<group>"; };
 		B7BC550934A82A4D06DCB8F8 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F8C8E0B34BE8F30133701E6B /* ArmTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmTrackerApp.swift; sourceTree = "<group>"; };
-		FB5DCA5968A0C1CA73CBE767 /* ArmTracker.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ArmTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FB5DCA5968A0C1CA73CBE767 /* ArmTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArmTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBD1C29BBC5F390F5CA6D9AF /* ARViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARViewContainer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -103,11 +103,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-					345B94F79A4CCCA87C92F9F2 = {
-						DevelopmentTeam = SPL85G447K;
-					};
-				};
 			};
 			buildConfigurationList = 73AFA5DE214A3AF02D77DC54 /* Build configuration list for PBXProject "ArmTracker" */;
 			developmentRegion = en;
