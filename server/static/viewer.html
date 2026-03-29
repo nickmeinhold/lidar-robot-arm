@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 Arm Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; overflow: hidden; font-family: 'SF Mono', 'Fira Code', monospace; }
+  canvas { display: block; }
+
+  /* --- HUD overlay --- */
+  #hud {
+    position: fixed; top: 16px; right: 16px;
+    background: rgba(20, 20, 40, 0.85);
+    border: 1px solid rgba(100, 120, 180, 0.3);
+    border-radius: 8px; padding: 14px 18px;
+    color: #c0c8e0; font-size: 12px; line-height: 1.7;
+    min-width: 220px; backdrop-filter: blur(8px);
+    z-index: 10;
+  }
+  #hud h3 { color: #8090c0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ff4444; flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .status-dot.connected { background: #44ff88; }
+  .status-dot.viewing { background: #ffaa44; }
+  .angle-row { display: flex; justify-content: space-between; }
+  .angle-label { color: #7080a0; }
+  .angle-value { color: #e0e8ff; font-variant-numeric: tabular-nums; }
+  .tracking-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; margin-left: 4px;
+  }
+  .tracking-on { background: rgba(68, 255, 136, 0.2); color: #44ff88; }
+  .tracking-off { background: rgba(255, 68, 68, 0.15); color: #ff6666; }
+  #fps { color: #506080; font-size: 10px; margin-top: 6px; }
+
+  /* --- Controls panel --- */
+  #controls {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(20, 20, 40, 0.92);
+    border-top: 1px solid rgba(100, 120, 180, 0.3);
+    padding: 12px 20px; z-index: 10;
+    backdrop-filter: blur(8px);
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+  }
+  #controls.open { transform: translateY(0); }
+  #controls-toggle {
+    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(40, 40, 70, 0.9); color: #8090c0;
+    border: 1px solid rgba(100, 120, 180, 0.3); border-radius: 6px;
+    padding: 6px 16px; cursor: pointer; font-family: inherit;
+    font-size: 11px; z-index: 11;
+    transition: bottom 0.3s ease;
+  }
+  #controls-toggle.open { bottom: 140px; }
+  .slider-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px 20px; max-width: 800px; margin: 0 auto;
+  }
+  .slider-group { display: flex; flex-direction: column; gap: 2px; }
+  .slider-group label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: #7080a0;
+  }
+  .slider-group label span { color: #c0c8e0; }
+  .slider-group input[type="range"] {
+    width: 100%; accent-color: #4a90d9; height: 4px;
+  }
+  .btn-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+  .btn {
+    background: rgba(74, 144, 217, 0.2); color: #4a90d9;
+    border: 1px solid rgba(74, 144, 217, 0.4); border-radius: 4px;
+    padding: 4px 14px; cursor: pointer; font-family: inherit; font-size: 11px;
+  }
+  .btn:hover { background: rgba(74, 144, 217, 0.35); }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h3>SO-101 Arm</h3>
+  <div class="status-row">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Connecting...</span>
+  </div>
+  <div id="tracking-row" style="margin-bottom: 8px; font-size: 11px;">
+    Tracking:
+    <span class="tracking-badge tracking-off" id="track-body">body</span>
+    <span class="tracking-badge tracking-off" id="track-hand">hand</span>
+  </div>
+  <div id="angles-display"></div>
+  <div id="fps"></div>
+</div>
+
+<button id="controls-toggle" onclick="toggleControls()">Test Controls</button>
+
+<div id="controls">
+  <div class="slider-grid">
+    <div class="slider-group">
+      <label>Shoulder Yaw <span id="v-yaw">0.0</span></label>
+      <input type="range" id="s-yaw" min="-3.14" max="3.14" step="0.01" value="0">
+    </div>
+    <div class="slider-group">
+      <label>Shoulder Pitch <span id="v-pitch">0.0</span></label>
+      <input type="range" id="s-pitch" min="0" max="3.14" step="0.01" value="1.57">
+    </div>
+    <div class="slider-group">
+      <label>Elbow <span id="v-elbow">0.0</span></label>
+      <input type="range" id="s-elbow" min="0" max="3.14" step="0.01" value="0">
+    </div>
+    <div class="slider-group">
+      <label>Wrist Pitch <span id="v-wpitch">0.0</span></label>
+      <input type="range" id="s-wpitch" min="-2.0" max="2.0" step="0.01" value="0">
+    </div>
+    <div class="slider-group">
+      <label>Wrist Roll <span id="v-wroll">0.0</span></label>
+      <input type="range" id="s-wroll" min="-3.14" max="3.14" step="0.01" value="0">
+    </div>
+    <div class="slider-group">
+      <label>Gripper <span id="v-grip">100%</span></label>
+      <input type="range" id="s-grip" min="0" max="1" step="0.01" value="1">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn" onclick="setHome()">Home (up)</button>
+    <button class="btn" onclick="setForward()">Forward</button>
+    <button class="btn" onclick="setRelaxed()">Relaxed</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── SO-101 dimensions (meters) ──────────────────────────────────
+const BASE_HEIGHT   = 0.048;
+const BASE_RADIUS   = 0.035;
+const UPPER_ARM_LEN = 0.1126;
+const FOREARM_LEN   = 0.1349;
+const WRIST_LEN     = 0.0601;
+const GRIPPER_LEN   = 0.042;
+const LINK_RADIUS   = 0.012;
+const JOINT_RADIUS  = 0.016;
+const FINGER_W      = 0.008;
+const FINGER_D      = 0.010;
+const FINGER_H      = 0.040;
+const GRIP_MAX_HALF = 0.0175;  // half of 35mm max opening
+
+// ─── Colors ──────────────────────────────────────────────────────
+const C = {
+  base:    0x404060,
+  joint:   0xff6b35,
+  upper:   0x4a90d9,
+  forearm: 0x5ba0e9,
+  wrist:   0x6ab0f9,
+  finger:  0x50c878,
+  grid:    0x333355,
+  ground:  0x222244,
+};
+
+// ─── Scene setup ─────────────────────────────────────────────────
+const scene    = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.FogExp2(0x1a1a2e, 1.5);
+
+const camera   = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.01, 10);
+camera.position.set(0.25, 0.25, 0.35);
+camera.lookAt(0, 0.15, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.13, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.15;
+controls.maxDistance = 1.5;
+controls.update();
+
+// ─── Lighting ────────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0x404060, 0.8);
+scene.add(ambient);
+
+const key = new THREE.DirectionalLight(0xffffff, 1.2);
+key.position.set(0.3, 0.5, 0.4);
+key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.near = 0.1;
+key.shadow.camera.far = 2;
+key.shadow.camera.left = key.shadow.camera.bottom = -0.4;
+key.shadow.camera.right = key.shadow.camera.top = 0.4;
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0x6688cc, 0.4);
+fill.position.set(-0.3, 0.3, -0.2);
+scene.add(fill);
+
+// ─── Ground ──────────────────────────────────────────────────────
+const gridHelper = new THREE.GridHelper(0.6, 30, C.grid, C.grid);
+gridHelper.material.opacity = 0.4;
+gridHelper.material.transparent = true;
+scene.add(gridHelper);
+
+const groundGeo = new THREE.PlaneGeometry(2, 2);
+const groundMat = new THREE.MeshStandardMaterial({ color: C.ground, roughness: 0.9 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.001;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ─── Helpers ─────────────────────────────────────────────────────
+function makeMat(color) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.3 });
+}
+function cylinder(radius, height, color) {
+  const geo = new THREE.CylinderGeometry(radius, radius, height, 16);
+  const mesh = new THREE.Mesh(geo, makeMat(color));
+  mesh.castShadow = true;
+  return mesh;
+}
+function sphere(radius, color) {
+  const geo = new THREE.SphereGeometry(radius, 16, 12);
+  const mesh = new THREE.Mesh(geo, makeMat(color));
+  mesh.castShadow = true;
+  return mesh;
+}
+function box(w, h, d, color) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mesh = new THREE.Mesh(geo, makeMat(color));
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// ─── Build arm ───────────────────────────────────────────────────
+// Hierarchy: base → yawPivot → pitchPivot → upperArm → elbowPivot
+//            → forearm → wristPitchPivot → wristLink → wristRollPivot → gripper
+
+const armRoot = new THREE.Group();
+scene.add(armRoot);
+
+// Base platform
+const baseMesh = cylinder(BASE_RADIUS, BASE_HEIGHT, C.base);
+baseMesh.position.y = BASE_HEIGHT / 2;
+armRoot.add(baseMesh);
+
+// Shoulder yaw pivot (at top of base)
+const yawPivot = new THREE.Group();
+yawPivot.position.y = BASE_HEIGHT;
+armRoot.add(yawPivot);
+
+// Shoulder joint sphere
+const shoulderJoint = sphere(JOINT_RADIUS, C.joint);
+yawPivot.add(shoulderJoint);
+
+// Shoulder pitch pivot
+const pitchPivot = new THREE.Group();
+yawPivot.add(pitchPivot);
+
+// Upper arm — extends downward (-Y) from shoulder in local frame
+// (pitch=0 means hanging down, pitch=pi means straight up)
+const upperArmGroup = new THREE.Group();
+pitchPivot.add(upperArmGroup);
+
+const upperArmMesh = cylinder(LINK_RADIUS, UPPER_ARM_LEN, C.upper);
+upperArmMesh.position.y = -UPPER_ARM_LEN / 2;
+upperArmGroup.add(upperArmMesh);
+
+// Elbow pivot (at end of upper arm)
+const elbowPivot = new THREE.Group();
+elbowPivot.position.y = -UPPER_ARM_LEN;
+upperArmGroup.add(elbowPivot);
+
+// Elbow joint sphere
+const elbowJoint = sphere(JOINT_RADIUS * 0.85, C.joint);
+elbowPivot.add(elbowJoint);
+
+// Forearm — extends downward (-Y) from elbow
+const forearmGroup = new THREE.Group();
+elbowPivot.add(forearmGroup);
+
+const forearmMesh = cylinder(LINK_RADIUS * 0.85, FOREARM_LEN, C.forearm);
+forearmMesh.position.y = -FOREARM_LEN / 2;
+forearmGroup.add(forearmMesh);
+
+// Wrist pitch pivot (at end of forearm)
+const wristPitchPivot = new THREE.Group();
+wristPitchPivot.position.y = -FOREARM_LEN;
+forearmGroup.add(wristPitchPivot);
+
+// Wrist joint sphere
+const wristJoint = sphere(JOINT_RADIUS * 0.7, C.joint);
+wristPitchPivot.add(wristJoint);
+
+// Wrist link — extends downward
+const wristGroup = new THREE.Group();
+wristPitchPivot.add(wristGroup);
+
+const wristMesh = cylinder(LINK_RADIUS * 0.7, WRIST_LEN, C.wrist);
+wristMesh.position.y = -WRIST_LEN / 2;
+wristGroup.add(wristMesh);
+
+// Wrist roll pivot (at end of wrist link)
+const wristRollPivot = new THREE.Group();
+wristRollPivot.position.y = -WRIST_LEN;
+wristGroup.add(wristRollPivot);
+
+// Gripper base
+const gripperBase = box(0.03, 0.012, 0.018, C.joint);
+gripperBase.position.y = -0.006;
+wristRollPivot.add(gripperBase);
+
+// Gripper fingers
+const leftFinger = box(FINGER_W, FINGER_H, FINGER_D, C.finger);
+leftFinger.position.set(-GRIP_MAX_HALF, -0.012 - FINGER_H / 2, 0);
+wristRollPivot.add(leftFinger);
+
+const rightFinger = box(FINGER_W, FINGER_H, FINGER_D, C.finger);
+rightFinger.position.set(GRIP_MAX_HALF, -0.012 - FINGER_H / 2, 0);
+wristRollPivot.add(rightFinger);
+
+// ─── Angle state ─────────────────────────────────────────────────
+const target = {
+  shoulder_yaw: 0,
+  shoulder_pitch: Math.PI / 2,  // arm horizontal forward
+  elbow_pitch: 0,
+  wrist_pitch: 0,
+  wrist_roll: 0,
+  gripper: 1.0,
+};
+const current = { ...target };
+const tracking = { body: false, hand: false };
+
+const LERP = 0.12;  // smoothing factor
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ─── Angle conventions ──────────────────────────────────────────
+// From iPhone JointAngleCalculator:
+//   shoulder_yaw:   atan2(arm.x, arm.z) — horizontal rotation, 0 = forward (+Z)
+//   shoulder_pitch: angle from DOWN (-Y). 0 = down, pi/2 = horizontal, pi = up
+//   elbow_pitch:    pi - angleBetween(upper, fore). 0 = straight, pi = folded
+//   wrist_pitch:    relative Euler X (wrist - elbow)
+//   wrist_roll:     relative Euler Z (wrist - elbow)
+//
+// In Three.js the arm hangs along -Y in each local frame.
+// Pitch rotations are around local X axis:
+//   shoulder_pitch=0 → -Y (down), pi/2 → -Z (forward), pi → +Y (up)
+
+function applyAngles() {
+  // Smooth toward target
+  current.shoulder_yaw   = lerp(current.shoulder_yaw,   target.shoulder_yaw,   LERP);
+  current.shoulder_pitch = lerp(current.shoulder_pitch, target.shoulder_pitch, LERP);
+  current.elbow_pitch    = lerp(current.elbow_pitch,    target.elbow_pitch,    LERP);
+  current.wrist_pitch    = lerp(current.wrist_pitch,    target.wrist_pitch,    LERP);
+  current.wrist_roll     = lerp(current.wrist_roll,     target.wrist_roll,     LERP);
+  current.gripper        = lerp(current.gripper,         target.gripper,        LERP);
+
+  // Shoulder yaw: rotate whole arm around Y
+  yawPivot.rotation.y = current.shoulder_yaw;
+
+  // Shoulder pitch: angle from down, rotating around X
+  // pitch=0 → arm hangs down (-Y), pitch=pi/2 → forward, pitch=pi → up
+  pitchPivot.rotation.x = current.shoulder_pitch;
+
+  // Elbow: bends forearm relative to upper arm, around X
+  // elbow=0 → straight (aligned), positive → bends toward "inside"
+  elbowPivot.rotation.x = current.elbow_pitch;
+
+  // Wrist pitch
+  wristPitchPivot.rotation.x = current.wrist_pitch;
+
+  // Wrist roll: rotation around the link axis (-Y → rotation.y)
+  wristRollPivot.rotation.y = current.wrist_roll;
+
+  // Gripper: 0 = closed, 1 = open
+  const halfOpen = current.gripper * GRIP_MAX_HALF;
+  const closedOffset = 0.004;  // fingers slightly apart when "closed"
+  leftFinger.position.x  = -(closedOffset + halfOpen);
+  rightFinger.position.x =  (closedOffset + halfOpen);
+}
+
+// ─── HUD update ──────────────────────────────────────────────────
+const anglesDiv = document.getElementById('angles-display');
+const angleNames = [
+  ['Shoulder Yaw', 'shoulder_yaw'],
+  ['Shoulder Pitch', 'shoulder_pitch'],
+  ['Elbow', 'elbow_pitch'],
+  ['Wrist Pitch', 'wrist_pitch'],
+  ['Wrist Roll', 'wrist_roll'],
+  ['Gripper', 'gripper'],
+];
+const fpsEl = document.getElementById('fps');
+let frameCount = 0, lastFpsTime = performance.now(), currentFps = 0;
+
+function updateHUD() {
+  let html = '';
+  for (const [label, key] of angleNames) {
+    const val = current[key];
+    const display = key === 'gripper'
+      ? `${(val * 100).toFixed(0)}%`
+      : `${(val * 180 / Math.PI).toFixed(1)}°`;
+    html += `<div class="angle-row"><span class="angle-label">${label}</span><span class="angle-value">${display}</span></div>`;
+  }
+  anglesDiv.innerHTML = html;
+
+  // Tracking badges
+  const bodyEl = document.getElementById('track-body');
+  const handEl = document.getElementById('track-hand');
+  bodyEl.className = `tracking-badge ${tracking.body ? 'tracking-on' : 'tracking-off'}`;
+  handEl.className = `tracking-badge ${tracking.hand ? 'tracking-on' : 'tracking-off'}`;
+
+  // FPS
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    currentFps = frameCount;
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+  fpsEl.textContent = `${currentFps} fps`;
+}
+
+// ─── Animation loop ──────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  applyAngles();
+  updateHUD();
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ─── Resize ──────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ─── WebSocket ───────────────────────────────────────────────────
+const statusDot  = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+let ws = null;
+let useSliders = false;
+let messageCount = 0;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/viewer`);
+
+  ws.onopen = () => {
+    statusDot.className = 'status-dot viewing';
+    statusText.textContent = 'Connected — waiting for phone';
+  };
+
+  ws.onmessage = (event) => {
+    if (useSliders) return;  // ignore server data when using test controls
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === 'arm_state' && data.angles) {
+        target.shoulder_yaw   = data.angles.shoulder_yaw   ?? target.shoulder_yaw;
+        target.shoulder_pitch = data.angles.shoulder_pitch ?? target.shoulder_pitch;
+        target.elbow_pitch    = data.angles.elbow_pitch    ?? target.elbow_pitch;
+        target.wrist_pitch    = data.angles.wrist_pitch    ?? target.wrist_pitch;
+        target.wrist_roll     = data.angles.wrist_roll     ?? target.wrist_roll;
+        target.gripper        = data.angles.gripper         ?? target.gripper;
+
+        if (data.tracking) {
+          tracking.body = !!data.tracking.body;
+          tracking.hand = !!data.tracking.hand;
+        }
+
+        messageCount++;
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = `Streaming (${messageCount} frames)`;
+      }
+    } catch (e) { /* ignore malformed */ }
+  };
+
+  ws.onclose = () => {
+    statusDot.className = 'status-dot';
+    statusText.textContent = 'Disconnected — reconnecting...';
+    setTimeout(connect, 1500);
+  };
+
+  ws.onerror = () => ws.close();
+}
+connect();
+
+// ─── Test controls ───────────────────────────────────────────────
+const sliders = {
+  yaw:    document.getElementById('s-yaw'),
+  pitch:  document.getElementById('s-pitch'),
+  elbow:  document.getElementById('s-elbow'),
+  wpitch: document.getElementById('s-wpitch'),
+  wroll:  document.getElementById('s-wroll'),
+  grip:   document.getElementById('s-grip'),
+};
+const labels = {
+  yaw:    document.getElementById('v-yaw'),
+  pitch:  document.getElementById('v-pitch'),
+  elbow:  document.getElementById('v-elbow'),
+  wpitch: document.getElementById('v-wpitch'),
+  wroll:  document.getElementById('v-wroll'),
+  grip:   document.getElementById('v-grip'),
+};
+
+function readSliders() {
+  if (!useSliders) return;
+  target.shoulder_yaw   = parseFloat(sliders.yaw.value);
+  target.shoulder_pitch = parseFloat(sliders.pitch.value);
+  target.elbow_pitch    = parseFloat(sliders.elbow.value);
+  target.wrist_pitch    = parseFloat(sliders.wpitch.value);
+  target.wrist_roll     = parseFloat(sliders.wroll.value);
+  target.gripper        = parseFloat(sliders.grip.value);
+
+  const deg = (v) => (v * 180 / Math.PI).toFixed(1) + '°';
+  labels.yaw.textContent    = deg(target.shoulder_yaw);
+  labels.pitch.textContent  = deg(target.shoulder_pitch);
+  labels.elbow.textContent  = deg(target.elbow_pitch);
+  labels.wpitch.textContent = deg(target.wrist_pitch);
+  labels.wroll.textContent  = deg(target.wrist_roll);
+  labels.grip.textContent   = (target.gripper * 100).toFixed(0) + '%';
+}
+
+for (const s of Object.values(sliders)) {
+  s.addEventListener('input', readSliders);
+}
+
+function syncSlidersFromTarget() {
+  sliders.yaw.value    = target.shoulder_yaw;
+  sliders.pitch.value  = target.shoulder_pitch;
+  sliders.elbow.value  = target.elbow_pitch;
+  sliders.wpitch.value = target.wrist_pitch;
+  sliders.wroll.value  = target.wrist_roll;
+  sliders.grip.value   = target.gripper;
+  readSliders();
+}
+
+// Preset poses
+window.setHome = () => {
+  target.shoulder_yaw = 0;
+  target.shoulder_pitch = Math.PI;       // straight up
+  target.elbow_pitch = 0;
+  target.wrist_pitch = 0;
+  target.wrist_roll = 0;
+  target.gripper = 1;
+  syncSlidersFromTarget();
+};
+window.setForward = () => {
+  target.shoulder_yaw = 0;
+  target.shoulder_pitch = Math.PI / 2;   // horizontal forward
+  target.elbow_pitch = 0;
+  target.wrist_pitch = 0;
+  target.wrist_roll = 0;
+  target.gripper = 1;
+  syncSlidersFromTarget();
+};
+window.setRelaxed = () => {
+  target.shoulder_yaw = 0;
+  target.shoulder_pitch = Math.PI * 0.4; // slightly forward of down
+  target.elbow_pitch = Math.PI / 3;      // elbow bent
+  target.wrist_pitch = 0;
+  target.wrist_roll = 0;
+  target.gripper = 0.6;
+  syncSlidersFromTarget();
+};
+
+// Toggle controls panel
+window.toggleControls = () => {
+  const panel = document.getElementById('controls');
+  const btn = document.getElementById('controls-toggle');
+  const isOpen = panel.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  btn.textContent = isOpen ? 'Hide Controls' : 'Test Controls';
+  useSliders = isOpen;
+  if (isOpen) syncSlidersFromTarget();
+};
+
+// Start with arm in a natural pose
+target.shoulder_pitch = Math.PI / 2;
+target.elbow_pitch = 0;
+target.gripper = 1.0;
+
+</script>
+</body>
+</html>
