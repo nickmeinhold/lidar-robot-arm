@@ -1,0 +1,2 @@
+websockets>=15.0
+zeroconf>=0.146.0

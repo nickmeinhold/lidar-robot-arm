@@ -63,8 +63,11 @@ final class BodyTrackingManager: NSObject, ObservableObject {
             .store(in: &cancellables)
 
         // Auto-connect when Bonjour discovers a server.
+        // removeDuplicates() prevents reconnect loops when Bonjour
+        // re-resolves the same endpoint (which kills the active connection).
         bonjourDiscovery.$selectedServerURL
             .compactMap { $0 }
+            .removeDuplicates()
             .sink { [weak self] url in
                 self?.webSocketClient.connect(to: url)
             }
