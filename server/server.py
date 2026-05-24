@@ -24,6 +24,7 @@ from websockets.http11 import Request, Response
 
 from .arm_controller import ArmController, ConsoleArmController
 from .discovery import advertise, get_lan_ip
+from .feetech_controller import FeetechArmController
 from .protocol import make_pong, parse_message
 
 log = logging.getLogger(__name__)
@@ -111,8 +112,13 @@ class ArmTrackerServer:
 
         try:
             async for raw in connection:
+                # Binary frames (H.264 video) are forwarded verbatim to viewers
+                # without parsing — the controller pipeline only cares about
+                # text JSON arm_state messages.
                 if not isinstance(raw, str):
-                    continue  # ignore binary frames
+                    if self._viewers:
+                        websockets.broadcast(self._viewers, raw)
+                    continue
 
                 msg = parse_message(raw)
                 if msg is None:
@@ -135,6 +141,7 @@ class ArmTrackerServer:
 async def main(
     port: int = 8765,
     use_bonjour: bool = True,
+    feetech_port: str | None = None,
 ) -> None:
     """Start the server and block until interrupted."""
     logging.basicConfig(
@@ -143,7 +150,13 @@ async def main(
         datefmt="%H:%M:%S",
     )
 
-    controller = ConsoleArmController()
+    controller: ArmController
+    if feetech_port:
+        feetech = FeetechArmController(feetech_port)
+        await asyncio.to_thread(feetech.connect)
+        controller = feetech
+    else:
+        controller = ConsoleArmController()
     tracker = ArmTrackerServer(controller)
 
     stop_event = asyncio.Event()
@@ -191,8 +204,21 @@ def cli() -> None:
         action="store_true",
         help="Disable Bonjour/zeroconf advertisement",
     )
+    parser.add_argument(
+        "--feetech-port",
+        type=str,
+        default=None,
+        help="Serial port for Feetech servo bus (e.g. /dev/cu.usbmodem...). "
+        "If omitted, the console controller is used.",
+    )
     args = parser.parse_args()
-    asyncio.run(main(port=args.port, use_bonjour=not args.no_bonjour))
+    asyncio.run(
+        main(
+            port=args.port,
+            use_bonjour=not args.no_bonjour,
+            feetech_port=args.feetech_port,
+        )
+    )
 
 
 if __name__ == "__main__":
