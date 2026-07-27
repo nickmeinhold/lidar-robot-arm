@@ -1,0 +1,11 @@
+{
+  "_comment": "Original STS3215 EEPROM Min/Max Angle Limit registers (0x09 / 0x0B) read 2026-07-27 BEFORE widening for mechanical-limit calibration. Restore point. mode(0x21)=0 (position mode) for all.",
+  "servos": {
+    "1": {"name": "shoulder_yaw",   "min_angle": 1994, "max_angle": 2052},
+    "2": {"name": "shoulder_pitch", "min_angle": 2042, "max_angle": 2165},
+    "3": {"name": "elbow_pitch",    "min_angle": 1725, "max_angle": 2721},
+    "4": {"name": "wrist_pitch",    "min_angle": 1037, "max_angle": 2048},
+    "5": {"name": "wrist_roll",     "min_angle": 0,    "max_angle": 4095},
+    "6": {"name": "gripper",        "min_angle": 2046, "max_angle": 2047}
+  }
+}
