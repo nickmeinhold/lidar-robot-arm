@@ -33,7 +33,14 @@ ADDR_GOAL_SPEED = 0x2E
 ADDR_PRESENT_POSITION = 0x38
 
 DEFAULT_BAUD = 1_000_000
-SOFT_LIMIT_TICKS = 600  # ±~53° from home — conservative travel envelope
+SOFT_LIMIT_TICKS = 1200  # default ±~105° from home — full useful range now that
+                          # we've verified nothing will slam
+
+# Per-joint overrides for the soft-limit envelope, in ticks. Joints not
+# listed fall back to SOFT_LIMIT_TICKS.
+SOFT_LIMIT_OVERRIDES: dict[str, int] = {
+    "elbow_pitch": 1024,  # ±90°
+}
 TICKS_PER_REV = 4096
 TICKS_PER_RAD = TICKS_PER_REV / (2 * math.pi)
 
@@ -76,9 +83,9 @@ GRIPPER_SERVO_ID = 6
 GRIPPER_CLOSED_TICK = 2048
 GRIPPER_OPEN_TICK = 2700
 
-WRITE_INTERVAL_S = 0.04   # cap servo write rate at 25 Hz
-GOAL_SPEED = 1500         # ticks/sec — moderate; ~130°/sec
-GOAL_ACC = 50             # gentle ramp
+WRITE_INTERVAL_S = 0.033  # cap servo write rate at 30 Hz (matches iPhone rate)
+GOAL_SPEED = 3000         # ticks/sec — snappier; ~260°/sec
+GOAL_ACC = 80             # quicker ramp without slamming
 
 
 class FeetechArmController(ArmController):
@@ -130,12 +137,13 @@ class FeetechArmController(ArmController):
             pos, comm, _ = packet.read2ByteTxRx(port, cfg.servo_id, ADDR_PRESENT_POSITION)
             if comm != COMM_SUCCESS:
                 continue
+            limit = SOFT_LIMIT_OVERRIDES.get(name, SOFT_LIMIT_TICKS)
             self._joints[name] = JointConfig(
                 servo_id=cfg.servo_id,
                 center_tick=pos,
                 direction=cfg.direction,
-                min_tick=max(0, pos - SOFT_LIMIT_TICKS),
-                max_tick=min(TICKS_PER_REV - 1, pos + SOFT_LIMIT_TICKS),
+                min_tick=max(0, pos - limit),
+                max_tick=min(TICKS_PER_REV - 1, pos + limit),
             )
             log.info("ID %d (%s): home=%d, soft-limits=[%d,%d]",
                      cfg.servo_id, name, pos,
@@ -173,6 +181,17 @@ class FeetechArmController(ArmController):
         if now - self._last_debug > 1.0:
             log.info("rx: %s | %s", angles.degrees_str(), tracking)
             self._last_debug = now
+            # Also dump current target ticks so we can see whether soft-limit
+            # clamping is freezing a joint at the boundary.
+            if tracking.body or tracking.hand:
+                relative_for_dbg = self._relative(angles) if self._reference else angles
+                dbg_targets = self._build_targets(
+                    relative_for_dbg,
+                    drive_arm=tracking.body,
+                    drive_gripper=tracking.hand,
+                )
+                if dbg_targets:
+                    log.info("tx: %s", " ".join(f"ID{s}={t}" for s, t in dbg_targets))
 
         if now - self._last_write < WRITE_INTERVAL_S:
             return
@@ -195,6 +214,51 @@ class FeetechArmController(ArmController):
 
     async def stop(self) -> None:
         await asyncio.to_thread(self.disconnect)
+
+    # --- teach / manual helpers ---------------------------------------
+
+    def set_torque(self, on: bool) -> None:
+        """Enable (hold) or disable (limp) torque on all present servos.
+
+        Limp is the safe state and is what lets you hand-pose the arm for a
+        teach capture. Support the arm before releasing if it's raised — it
+        will drop under gravity.
+        """
+        if self._port is None or self._packet is None:
+            return
+        for sid in self._present_ids:
+            self._packet.write1ByteTxRx(self._port, sid, ADDR_TORQUE_ENABLE, 1 if on else 0)
+        log.info("Torque %s on %s", "ON" if on else "OFF", sorted(self._present_ids))
+
+    def _read_tick(self, sid: int, tries: int = 5) -> int | None:
+        """Read PRESENT_POSITION with retry — the SDK throws IndexError on an
+        empty packet during bus hiccups, so a bare read can crash."""
+        for _ in range(tries):
+            try:
+                v, comm, _ = self._packet.read2ByteTxRx(self._port, sid, ADDR_PRESENT_POSITION)
+                if comm == COMM_SUCCESS:
+                    return v
+            except IndexError:
+                pass
+            time.sleep(0.02)
+        return None
+
+    def read_present_ticks(self) -> dict[str, int]:
+        """Read live PRESENT_POSITION for every present joint, keyed by name."""
+        out: dict[str, int] = {}
+        if self._port is None or self._packet is None:
+            return out
+        for name, cfg in self._joints.items():
+            if cfg.servo_id not in self._present_ids:
+                continue
+            tick = self._read_tick(cfg.servo_id)
+            if tick is not None:
+                out[name] = tick
+        if GRIPPER_SERVO_ID in self._present_ids:
+            tick = self._read_tick(GRIPPER_SERVO_ID)
+            if tick is not None:
+                out["gripper"] = tick
+        return out
 
     # --- internals -----------------------------------------------------
 

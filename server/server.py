@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import signal
 from contextlib import AsyncExitStack
@@ -30,6 +31,7 @@ from .protocol import make_pong, parse_message
 log = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_ZERO_CAL_PATH = Path(__file__).parent / "zero_calibration.json"
 
 
 class ArmTrackerServer:
@@ -80,18 +82,65 @@ class ArmTrackerServer:
             await self._controller_handler(connection)
 
     async def _viewer_handler(self, connection: ServerConnection) -> None:
-        """Handle a 3D viewer connection (receive-only)."""
+        """Handle a 3D viewer connection.
+
+        Viewers are normally receive-only (they render the iPhone's stream).
+        But when the viewer's "Drive Real Arm" mode is on, it sends the same
+        ``arm_state`` messages the iPhone does — so we route those straight
+        into the controller, reusing the identical clamp/write pipeline. This
+        turns the 3D UI into a manual teleop input.
+        """
         remote = connection.remote_address
         self._viewers.add(connection)
         log.info("Viewer connected: %s (%d viewers)", remote, len(self._viewers))
         try:
-            async for _ in connection:
-                pass  # viewers don't send meaningful data
+            async for raw in connection:
+                if not isinstance(raw, str):
+                    continue
+                if await self._handle_control(connection, raw):
+                    continue  # was a control message (torque / capture-zero)
+                msg = parse_message(raw)
+                if msg is None:
+                    continue  # not an arm_state — viewers usually send nothing
+                await self._controller.update(msg.angles, msg.tracking)
         except websockets.ConnectionClosed:
             pass
         finally:
             self._viewers.discard(connection)
             log.info("Viewer disconnected: %s (%d viewers)", remote, len(self._viewers))
+
+    async def _handle_control(self, connection: ServerConnection, raw: str) -> bool:
+        """Handle viewer control messages (torque toggle, capture-zero).
+
+        Returns True if *raw* was a control message (and was handled), so the
+        caller skips arm_state parsing. Control verbs only work on a real
+        hardware controller; the console controller ignores them gracefully.
+        """
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        mtype = data.get("type")
+
+        if mtype == "set_torque":
+            on = bool(data.get("on"))
+            if hasattr(self._controller, "set_torque"):
+                await asyncio.to_thread(self._controller.set_torque, on)
+            return True
+
+        if mtype == "capture_zero":
+            if hasattr(self._controller, "read_present_ticks"):
+                ticks = await asyncio.to_thread(self._controller.read_present_ticks)
+                try:
+                    _ZERO_CAL_PATH.write_text(json.dumps(ticks, indent=2))
+                    log.info("Captured zero calibration: %s -> %s", ticks, _ZERO_CAL_PATH)
+                except OSError as exc:
+                    log.warning("Failed to write zero calibration: %s", exc)
+                # Echo the captured ticks back so the viewer can confirm.
+                await connection.send(json.dumps({"type": "zero_captured", "ticks": ticks}))
+            return True
+
+        return False
 
     async def _controller_handler(self, connection: ServerConnection) -> None:
         """Handle the iPhone controller connection (single-client, last-writer-wins)."""

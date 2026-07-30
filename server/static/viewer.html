@@ -79,6 +79,29 @@
     padding: 4px 14px; cursor: pointer; font-family: inherit; font-size: 11px;
   }
   .btn:hover { background: rgba(74, 144, 217, 0.35); }
+
+  /* Drive-real-arm arm/fire toggle — visually loud, default off */
+  .btn-danger {
+    background: rgba(255, 80, 80, 0.12); color: #ff8080;
+    border-color: rgba(255, 80, 80, 0.4);
+  }
+  .btn-danger:hover { background: rgba(255, 80, 80, 0.22); }
+  .btn-danger.driving {
+    background: rgba(255, 60, 60, 0.9); color: #fff;
+    border-color: #ff4444; font-weight: bold;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  /* Whole-viewport warning ring while the real arm is live */
+  body.driving-real::after {
+    content: "⚡ LIVE — real arm is following";
+    position: fixed; inset: 0; z-index: 5; pointer-events: none;
+    border: 3px solid rgba(255, 60, 60, 0.85);
+    color: #fff; background: transparent;
+    font-size: 12px; text-align: center; padding-top: 6px;
+    text-shadow: 0 0 4px #000;
+  }
 </style>
 </head>
 <body>
@@ -131,6 +154,13 @@
     <button class="btn" onclick="setHome()">Home (up)</button>
     <button class="btn" onclick="setForward()">Forward</button>
     <button class="btn" onclick="setRelaxed()">Relaxed</button>
+    <button class="btn btn-danger" id="drive-btn" onclick="toggleDrive()">⚡ Drive Real Arm: OFF</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn" onclick="setTorque(false)">Release (limp)</button>
+    <button class="btn" onclick="setTorque(true)">Hold (rigid)</button>
+    <button class="btn" onclick="captureZero()">Capture Zero</button>
+    <span id="teach-status" style="color:#7080a0; font-size:11px; align-self:center;"></span>
   </div>
 </div>
 
@@ -474,7 +504,17 @@ function connect() {
   };
 
   ws.onmessage = (event) => {
-    if (useSliders) return;  // ignore server data when using test controls
+    // Control echoes are handled regardless of slider mode.
+    try {
+      const ctrl = JSON.parse(event.data);
+      if (ctrl.type === 'zero_captured') {
+        const n = Object.keys(ctrl.ticks || {}).length;
+        setTeachStatus(`zero captured (${n} joints): ${JSON.stringify(ctrl.ticks)}`);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+
+    if (useSliders) return;  // ignore server stream when using test controls
     try {
       const data = JSON.parse(event.data);
       if (data.type === 'arm_state' && data.angles) {
@@ -543,8 +583,74 @@ function readSliders() {
   labels.grip.textContent   = (target.gripper * 100).toFixed(0) + '%';
 }
 
+// ─── Drive the REAL arm ──────────────────────────────────────────
+// When armed, incremental slider drags are streamed to the server as
+// arm_state messages (same format the iPhone sends) and the real servos
+// follow. Default OFF — an explicit arm/fire gate. Preset buttons are
+// deliberately NOT streamed: their large jumps could slam the arm.
+let driveReal = false;
+let lastSendTime = 0;
+const SEND_INTERVAL_MS = 33;  // ~30 Hz, matches the controller write rate
+
+function sendToArm(force = false) {
+  if (!driveReal || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const now = performance.now();
+  if (!force && now - lastSendTime < SEND_INTERVAL_MS) return;
+  lastSendTime = now;
+  ws.send(JSON.stringify({
+    type: 'arm_state',
+    timestamp: now / 1000,
+    angles: {
+      shoulder_yaw:   target.shoulder_yaw,
+      shoulder_pitch: target.shoulder_pitch,
+      elbow_pitch:    target.elbow_pitch,
+      wrist_pitch:    target.wrist_pitch,
+      wrist_roll:     target.wrist_roll,
+      gripper:        target.gripper,
+    },
+    // body drives the arm joints, hand drives the gripper — both on so the
+    // full pose is applied. The first frame locks the controller's reference
+    // pose, so "current virtual pose" maps to "current real home".
+    tracking: { body: true, hand: true },
+  }));
+}
+
+// Control messages (torque, capture-zero) — sent regardless of drive state.
+function sendControl(obj) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setTeachStatus('not connected');
+    return;
+  }
+  ws.send(JSON.stringify(obj));
+}
+function setTeachStatus(msg) {
+  document.getElementById('teach-status').textContent = msg;
+}
+window.setTorque = (on) => {
+  sendControl({ type: 'set_torque', on });
+  setTeachStatus(on ? 'holding (rigid)' : 'limp — pose by hand');
+};
+window.captureZero = () => {
+  sendControl({ type: 'capture_zero' });
+  setTeachStatus('capturing…');
+};
+
+window.toggleDrive = () => {
+  driveReal = !driveReal;
+  const btn = document.getElementById('drive-btn');
+  btn.textContent = `⚡ Drive Real Arm: ${driveReal ? 'ON' : 'OFF'}`;
+  btn.classList.toggle('driving', driveReal);
+  document.body.classList.toggle('driving-real', driveReal);
+  if (driveReal) {
+    // Own the target: switch to slider mode so the inbound stream can't fight us.
+    if (!useSliders) toggleControls();
+    syncSlidersFromTarget();
+    sendToArm(true);  // lock the reference at the current pose
+  }
+};
+
 for (const s of Object.values(sliders)) {
-  s.addEventListener('input', readSliders);
+  s.addEventListener('input', () => { readSliders(); sendToArm(); });
 }
 
 function syncSlidersFromTarget() {
