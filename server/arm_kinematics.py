@@ -27,6 +27,7 @@ each pivot origin is directly a capsule endpoint.
 """
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 
@@ -207,12 +208,149 @@ def capsules(angles: dict) -> list[Capsule]:
 GROUND_PLANE_Y = 0.0
 
 
+# ─── Collision layer (Slice 2) ───────────────────────────────────────────────
+
+# Default keep-out buffer (meters). A commanded pose whose closest capsule pair
+# is nearer than this is treated as colliding. OPEN VARIABLE (DESIGN.md): starts
+# conservative, tightens once Slice 0 load spikes + Slice 2 cross-validation give
+# real numbers. Larger = safer but loses workspace.
+DEFAULT_MARGIN = 0.010
+
+# Allowed Collision Matrix — pairs that touch BY DESIGN (share a joint / are
+# mounted together), so their capsules always overlap at the pivot. Checking them
+# would report permanent collision and the gate would reject every pose. Excluding
+# them is what leaves only the REAL self-collisions. This is the #1 false-positive
+# source in capsule self-collision. Order-independent (stored as frozensets).
+_ACM: frozenset[frozenset[str]] = frozenset(
+    frozenset(pair)
+    for pair in (
+        ("upper_arm", "forearm"),      # share the elbow
+        ("forearm", "wrist"),          # share the wrist-pitch joint
+        ("wrist", "gripper_left"),     # gripper mounts on the wrist
+        ("wrist", "gripper_right"),
+        ("gripper_left", "gripper_right"),  # jaws close together intentionally
+        ("base", "upper_arm"),         # upper arm's shoulder sits atop the base
+    )
+)
+
+
+def closest_segment_segment(
+    p1: np.ndarray, q1: np.ndarray, p2: np.ndarray, q2: np.ndarray
+) -> tuple[float, np.ndarray, np.ndarray]:
+    """Closest distance between two 3D segments [p1,q1] and [p2,q2].
+
+    Ericson, *Real-Time Collision Detection* §5.1.9 (ClosestPtSegmentSegment).
+    Returns (distance, closest_pt_on_seg1, closest_pt_on_seg2). Handles the
+    degenerate/parallel cases the naive line-line formula gets wrong.
+    """
+    d1 = q1 - p1
+    d2 = q2 - p2
+    r = p1 - p2
+    a = float(d1 @ d1)   # squared length of segment 1
+    e = float(d2 @ d2)   # squared length of segment 2
+    f = float(d2 @ r)
+    eps = 1e-12
+
+    if a <= eps and e <= eps:            # both segments are points
+        s = t = 0.0
+    elif a <= eps:                        # segment 1 is a point
+        s = 0.0
+        t = _clamp(f / e, 0.0, 1.0)
+    else:
+        c = float(d1 @ r)
+        if e <= eps:                      # segment 2 is a point
+            t = 0.0
+            s = _clamp(-c / a, 0.0, 1.0)
+        else:                             # general non-degenerate case
+            b = float(d1 @ d2)
+            denom = a * e - b * b         # >= 0
+            s = _clamp((b * f - c * e) / denom, 0.0, 1.0) if denom > eps else 0.0
+            t = (b * s + f) / e
+            if t < 0.0:
+                t = 0.0
+                s = _clamp(-c / a, 0.0, 1.0)
+            elif t > 1.0:
+                t = 1.0
+                s = _clamp((b - c) / a, 0.0, 1.0)
+
+    c1 = p1 + d1 * s
+    c2 = p2 + d2 * t
+    return float(np.linalg.norm(c1 - c2)), c1, c2
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return lo if v < lo else hi if v > hi else v
+
+
+def capsule_distance(a: Capsule, b: Capsule) -> float:
+    """Signed clearance between two capsules: segment distance minus both radii.
+
+    Negative = interpenetration. This is the quantity the gate thresholds on.
+    """
+    seg, _, _ = closest_segment_segment(a.p0, a.p1, b.p0, b.p1)
+    return seg - a.radius - b.radius
+
+
+def collisions(
+    angles: dict, margin: float = DEFAULT_MARGIN, include_ground: bool = True
+) -> list[tuple[str, str, float]]:
+    """All colliding capsule pairs for a pose, each as (name_a, name_b, clearance).
+
+    A pair collides when its clearance < margin. ACM-excluded (adjacent) pairs
+    are skipped. Ground contact is reported as (link, "ground", clearance) where
+    clearance = lowest capsule extent minus GROUND_PLANE_Y. Sorted worst-first.
+    """
+    caps = capsules(angles)
+    hits: list[tuple[str, str, float]] = []
+
+    for a, b in itertools.combinations(caps, 2):
+        if frozenset((a.name, b.name)) in _ACM:
+            continue
+        clr = capsule_distance(a, b)
+        if clr < margin:
+            hits.append((a.name, b.name, clr))
+
+    if include_ground:
+        for c in caps:
+            if c.name == "base":
+                continue  # the base legitimately rests on the table
+            lowest = min(c.p0[1], c.p1[1]) - c.radius
+            clr = lowest - GROUND_PLANE_Y
+            if clr < margin:
+                hits.append((c.name, "ground", clr))
+
+    hits.sort(key=lambda h: h[2])
+    return hits
+
+
+def collides(
+    angles: dict, margin: float = DEFAULT_MARGIN, include_ground: bool = True
+) -> tuple[bool, tuple[str, str] | None]:
+    """Does this pose self-collide? Returns (colliding, worst_offending_pair).
+
+    The gate's yes/no with the single worst pair named (for the viewer glow +
+    Slice-0 cross-validation). Use `collisions()` for the full list.
+    """
+    hits = collisions(angles, margin, include_ground)
+    if not hits:
+        return False, None
+    a, b, _ = hits[0]
+    return True, (a, b)
+
+
 def _demo() -> None:
-    """Print capsule endpoints for the viewer's default pose (arm horizontal)."""
-    default = {"shoulder_pitch": math.pi / 2, "gripper": 1.0}
-    print("Default pose (shoulder_pitch=pi/2 → horizontal forward):")
-    for c in capsules(default):
-        print(f"  {c.name:14s} {np.round(c.p0, 4)} -> {np.round(c.p1, 4)}  r={c.radius:.4f}")
+    """Print capsule endpoints + a collision check for a couple of poses."""
+    poses = {
+        "horizontal forward (safe)": {"shoulder_pitch": math.pi / 2, "gripper": 1.0},
+        "elbow folded back into base": {"shoulder_pitch": math.pi / 2,
+                                        "elbow_pitch": math.pi},
+    }
+    for label, pose in poses.items():
+        print(f"\n{label}:")
+        for c in capsules(pose):
+            print(f"  {c.name:14s} {np.round(c.p0, 4)} -> {np.round(c.p1, 4)}  r={c.radius:.4f}")
+        hit, pair = collides(pose)
+        print(f"  collides={hit}  worst_pair={pair}")
 
 
 if __name__ == "__main__":

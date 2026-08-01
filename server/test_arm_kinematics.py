@@ -19,7 +19,12 @@ from server.arm_kinematics import (
     FOREARM_LEN,
     UPPER_ARM_LEN,
     WRIST_LEN,
+    Capsule,
+    capsule_distance,
     capsules,
+    closest_segment_segment,
+    collides,
+    collisions,
     frames,
 )
 
@@ -124,6 +129,88 @@ def test_gripper_open_wider_than_closed() -> None:
     print("ok  test_gripper_open_wider_than_closed")
 
 
+# ─── Collision layer (Slice 2) ───────────────────────────────────────────────
+
+def _v(*xs) -> np.ndarray:
+    return np.array(xs, dtype=float)
+
+
+def test_segseg_parallel_offset() -> None:
+    """Two parallel unit segments along Z, offset 0.1 in X → distance 0.1."""
+    d, _, _ = closest_segment_segment(_v(0, 0, 0), _v(0, 0, 1),
+                                      _v(0.1, 0, 0), _v(0.1, 0, 1))
+    assert abs(d - 0.1) < TOL, f"parallel offset dist {d}"
+    print("ok  test_segseg_parallel_offset")
+
+
+def test_segseg_crossing_skew() -> None:
+    """A seg along X and a seg along Z, planes 0.05 apart in Y, crossing over the
+    origin → closest approach 0.05."""
+    d, _, _ = closest_segment_segment(_v(-1, 0, 0), _v(1, 0, 0),
+                                      _v(0, 0.05, -1), _v(0, 0.05, 1))
+    assert abs(d - 0.05) < TOL, f"skew crossing dist {d}"
+    print("ok  test_segseg_crossing_skew")
+
+
+def test_segseg_endpoint_clamping() -> None:
+    """Non-overlapping colinear segments → distance is the gap between endpoints
+    (the clamp path Ericson gets right and the line-line formula does not)."""
+    d, _, _ = closest_segment_segment(_v(0, 0, 0), _v(0, 0, 1),
+                                      _v(0, 0, 3), _v(0, 0, 5))
+    assert abs(d - 2.0) < TOL, f"colinear gap dist {d}"
+    print("ok  test_segseg_endpoint_clamping")
+
+
+def test_capsule_distance_signs() -> None:
+    """Clearance = segment distance minus both radii; negative when interpenetrating."""
+    a = Capsule("a", _v(0, 0, 0), _v(0, 0, 1), 0.02)
+    far = Capsule("b", _v(0.1, 0, 0), _v(0.1, 0, 1), 0.02)   # seg dist 0.1
+    near = Capsule("c", _v(0.03, 0, 0), _v(0.03, 0, 1), 0.02)  # seg dist 0.03
+    assert abs(capsule_distance(a, far) - (0.1 - 0.04)) < TOL, "far clearance"
+    assert capsule_distance(a, near) < 0, "overlapping radii → negative clearance"
+    print("ok  test_capsule_distance_signs")
+
+
+def test_safe_pose_no_collision() -> None:
+    """The extended horizontal pose is collision-free."""
+    hit, pair = collides({"shoulder_pitch": math.pi / 2, "gripper": 1.0})
+    assert not hit, f"extended pose should be safe, got {pair}"
+    print("ok  test_safe_pose_no_collision")
+
+
+def test_folded_pose_collides() -> None:
+    """Fully folding the elbow swings the forearm back over the base → collision."""
+    hit, pair = collides({"shoulder_pitch": math.pi / 2, "elbow_pitch": math.pi})
+    assert hit, "folded-into-base pose should collide"
+    print(f"ok  test_folded_pose_collides (pair={pair})")
+
+
+def test_acm_excludes_adjacent_pairs() -> None:
+    """No collision report ever names an ACM-excluded adjacent pair, even in a
+    folded pose where they overlap most."""
+    excluded = {
+        frozenset(("upper_arm", "forearm")),
+        frozenset(("forearm", "wrist")),
+        frozenset(("wrist", "gripper_left")),
+        frozenset(("wrist", "gripper_right")),
+        frozenset(("gripper_left", "gripper_right")),
+        frozenset(("base", "upper_arm")),
+    }
+    for pose in ({}, {"shoulder_pitch": math.pi / 2, "elbow_pitch": math.pi},
+                 {"elbow_pitch": math.pi, "wrist_pitch": math.pi}):
+        for a, b, _ in collisions(pose):
+            assert frozenset((a, b)) not in excluded, f"ACM leak: {a}+{b} in {pose}"
+    print("ok  test_acm_excludes_adjacent_pairs")
+
+
+def test_ground_collision_reported() -> None:
+    """A pose driving a link below the table reports a ground collision."""
+    # All-zero hangs straight down through the table (y goes strongly negative).
+    hits = collisions({})
+    assert any(b == "ground" for _, b, _ in hits), f"expected ground hit, got {hits}"
+    print("ok  test_ground_collision_reported")
+
+
 def main() -> None:
     test_horizontal_forward()
     test_elbow_bend_up()
@@ -132,6 +219,14 @@ def main() -> None:
     test_link_lengths_are_pose_invariant()
     test_wrist_roll_moves_gripper_not_wrist()
     test_gripper_open_wider_than_closed()
+    test_segseg_parallel_offset()
+    test_segseg_crossing_skew()
+    test_segseg_endpoint_clamping()
+    test_capsule_distance_signs()
+    test_safe_pose_no_collision()
+    test_folded_pose_collides()
+    test_acm_excludes_adjacent_pairs()
+    test_ground_collision_reported()
     print("\nALL PASSED")
 
 
