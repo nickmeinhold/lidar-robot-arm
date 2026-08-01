@@ -1,0 +1,349 @@
+[
+  {
+    "angles": {},
+    "collides": true,
+    "pair": [
+      "gripper_left",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_pitch": 1.5707963267948966,
+      "gripper": 1.0
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_pitch": 1.5707963267948966,
+      "elbow_pitch": 3.141592653589793
+    },
+    "collides": true,
+    "pair": [
+      "base",
+      "forearm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_pitch": 1.5707963267948966,
+      "elbow_pitch": 2.827433388230814
+    },
+    "collides": true,
+    "pair": [
+      "base",
+      "forearm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_pitch": 3.141592653589793,
+      "elbow_pitch": 0.0
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_pitch": 1.2566370614359172,
+      "elbow_pitch": 1.0471975511965976,
+      "gripper": 0.6
+    },
+    "collides": true,
+    "pair": [
+      "ground",
+      "upper_arm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.5707963267948966,
+      "shoulder_pitch": 1.5707963267948966
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "elbow_pitch": 3.141592653589793,
+      "wrist_pitch": 3.141592653589793
+    },
+    "collides": true,
+    "pair": [
+      "ground",
+      "upper_arm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.7213166190998062,
+      "shoulder_pitch": 1.378777282143998,
+      "elbow_pitch": 2.6973649175810768,
+      "wrist_pitch": 0.7894721162374556,
+      "wrist_roll": -2.5498589250729733,
+      "gripper": 0.9756223516367559
+    },
+    "collides": true,
+    "pair": [
+      "base",
+      "forearm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.6407891386670415,
+      "shoulder_pitch": 2.4694938467072425,
+      "elbow_pitch": 0.4024808472381962,
+      "wrist_pitch": -0.19845624841773146,
+      "wrist_roll": -0.8117999558004185,
+      "gripper": 0.9267649888486018
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 0.9039312087064583,
+      "shoulder_pitch": 2.584781839907326,
+      "elbow_pitch": 1.3930267895333472,
+      "wrist_pitch": -1.0910451128608925,
+      "wrist_roll": 0.3429663317734203,
+      "gripper": 0.06381725610417532
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 2.0585673660378196,
+      "shoulder_pitch": 1.98443223581609,
+      "elbow_pitch": 2.381602875028699,
+      "wrist_pitch": -0.5818961274805265,
+      "wrist_roll": 2.957482910996515,
+      "gripper": 0.8931211213221977
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.749135098575132,
+      "shoulder_pitch": 0.6114755346919513,
+      "elbow_pitch": 1.466247276584905,
+      "wrist_pitch": -1.824784936851085,
+      "wrist_roll": -2.172163183978775,
+      "gripper": 0.6830489532424546
+    },
+    "collides": true,
+    "pair": [
+      "gripper_right",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.5378859817535957,
+      "shoulder_pitch": 3.0395214676919404,
+      "elbow_pitch": 1.0236105514800815,
+      "wrist_pitch": -0.5181611758605245,
+      "wrist_roll": -0.1912864792808461,
+      "gripper": 0.1894713590842857
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -2.3252717601793034,
+      "shoulder_pitch": 1.494471101507868,
+      "elbow_pitch": 0.7128567440090996,
+      "wrist_pitch": 0.6792559787300414,
+      "wrist_roll": -0.3948861399258022,
+      "gripper": 0.8326781960578374
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.2583027464413528,
+      "shoulder_pitch": 0.9813287457923376,
+      "elbow_pitch": 2.614621277941264,
+      "wrist_pitch": 1.2190574299872075,
+      "wrist_roll": -0.7069941956176383,
+      "gripper": 0.2883281039302441
+    },
+    "collides": true,
+    "pair": [
+      "ground",
+      "upper_arm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.1466530692018997,
+      "shoulder_pitch": 0.4390453758279357,
+      "elbow_pitch": 0.6280301402881412,
+      "wrist_pitch": -1.970550920995978,
+      "wrist_roll": 1.802799032993085,
+      "gripper": 0.6648508565920321
+    },
+    "collides": true,
+    "pair": [
+      "gripper_right",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.2890920925269254,
+      "shoulder_pitch": 2.452732588302892,
+      "elbow_pitch": 1.4417264290477112,
+      "wrist_pitch": 0.27496478381157496,
+      "wrist_roll": -2.2632222089662837,
+      "gripper": 0.11453007353597344
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 1.0581070152074168,
+      "shoulder_pitch": 1.479992380353288,
+      "elbow_pitch": 1.7757415996650008,
+      "wrist_pitch": 1.0599954296641023,
+      "wrist_roll": 0.8464601688356299,
+      "gripper": 0.5535794006579958
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 0.37200956247540234,
+      "shoulder_pitch": 0.9548873951313996,
+      "elbow_pitch": 0.09681708267818401,
+      "wrist_pitch": -0.25313044307055055,
+      "wrist_roll": -1.7933173901841886,
+      "gripper": 0.40852864372463615
+    },
+    "collides": true,
+    "pair": [
+      "gripper_right",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 2.220496997470652,
+      "shoulder_pitch": 0.7349425701791278,
+      "elbow_pitch": 0.18316346497451316,
+      "wrist_pitch": -0.8744644319120138,
+      "wrist_roll": -1.296888668510524,
+      "gripper": 0.6619165147268951
+    },
+    "collides": true,
+    "pair": [
+      "gripper_right",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": 0.3583435816275479,
+      "shoulder_pitch": 2.4626888548909043,
+      "elbow_pitch": 2.0870025379727473,
+      "wrist_pitch": -0.3744525542397179,
+      "wrist_roll": 1.9730482670885108,
+      "gripper": 0.1669729199077039
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -2.998888489379533,
+      "shoulder_pitch": 0.28289369788423263,
+      "elbow_pitch": 2.269358829085702,
+      "wrist_pitch": -0.15249107899445047,
+      "wrist_roll": -2.1282921811031534,
+      "gripper": 0.5010447751033635
+    },
+    "collides": true,
+    "pair": [
+      "ground",
+      "upper_arm"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -2.1845874877167852,
+      "shoulder_pitch": 2.187554974889105,
+      "elbow_pitch": 1.401641277696358,
+      "wrist_pitch": -0.4759150956140701,
+      "wrist_roll": -1.2471363251188337,
+      "gripper": 0.6302825931188885
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -0.8682569750084407,
+      "shoulder_pitch": 0.275360342611201,
+      "elbow_pitch": 0.3707264751820471,
+      "wrist_pitch": 1.8475906581980581,
+      "wrist_roll": 2.5671881926513236,
+      "gripper": 0.6997071338107496
+    },
+    "collides": true,
+    "pair": [
+      "forearm",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -1.4710824181269369,
+      "shoulder_pitch": 3.0447573871083784,
+      "elbow_pitch": 2.4465181188753506,
+      "wrist_pitch": 0.8675607566359824,
+      "wrist_roll": -0.318171065707792,
+      "gripper": 0.272241561845159
+    },
+    "collides": true,
+    "pair": [
+      "gripper_right",
+      "ground"
+    ]
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -2.5359503764420226,
+      "shoulder_pitch": 2.8356090580946742,
+      "elbow_pitch": 1.4318634438216848,
+      "wrist_pitch": -1.1905465408190787,
+      "wrist_roll": -1.2192104880921464,
+      "gripper": 0.579219568941896
+    },
+    "collides": false,
+    "pair": null
+  },
+  {
+    "angles": {
+      "shoulder_yaw": -2.030896501116766,
+      "shoulder_pitch": 2.691133141864687,
+      "elbow_pitch": 2.38295938253468,
+      "wrist_pitch": 0.8778518238037472,
+      "wrist_roll": -0.4266720147402969,
+      "gripper": 0.6273088407024432
+    },
+    "collides": true,
+    "pair": [
+      "gripper_left",
+      "ground"
+    ]
+  }
+]

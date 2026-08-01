@@ -102,6 +102,18 @@
     font-size: 12px; text-align: center; padding-top: 6px;
     text-shadow: 0 0 4px #000;
   }
+  .joint-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .jbtn {
+    flex: 1 1 auto; min-width: 52px; padding: 6px 4px;
+    background: #2a2f45; color: #c0c8e0;
+    border: 1px solid #3a4160; border-radius: 5px; cursor: pointer;
+    font-size: 11px; transition: background 0.12s, border-color 0.12s;
+  }
+  .jbtn:hover { background: #333a55; }
+  .jbtn.selected {
+    background: #2d5aa0; border-color: #4a90d9; color: #fff;
+    box-shadow: 0 0 6px rgba(74,144,217,0.5);
+  }
 </style>
 </head>
 <body>
@@ -124,31 +136,18 @@
 <button id="controls-toggle" onclick="toggleControls()">Test Controls</button>
 
 <div id="controls">
-  <div class="slider-grid">
-    <div class="slider-group">
-      <label>Shoulder Yaw <span id="v-yaw">0.0</span></label>
-      <input type="range" id="s-yaw" min="-3.14" max="3.14" step="0.01" value="0">
-    </div>
-    <div class="slider-group">
-      <label>Shoulder Pitch <span id="v-pitch">0.0</span></label>
-      <input type="range" id="s-pitch" min="0" max="3.14" step="0.01" value="1.57">
-    </div>
-    <div class="slider-group">
-      <label>Elbow <span id="v-elbow">0.0</span></label>
-      <input type="range" id="s-elbow" min="0" max="3.14" step="0.01" value="0">
-    </div>
-    <div class="slider-group">
-      <label>Wrist Pitch <span id="v-wpitch">0.0</span></label>
-      <input type="range" id="s-wpitch" min="-2.0" max="2.0" step="0.01" value="0">
-    </div>
-    <div class="slider-group">
-      <label>Wrist Roll <span id="v-wroll">0.0</span></label>
-      <input type="range" id="s-wroll" min="-3.14" max="3.14" step="0.01" value="0">
-    </div>
-    <div class="slider-group">
-      <label>Gripper <span id="v-grip">100%</span></label>
-      <input type="range" id="s-grip" min="0" max="1" step="0.01" value="1">
-    </div>
+  <div style="font-size:11px;color:#8890b0;margin-bottom:4px;">Select a joint, then drag the arc:</div>
+  <div class="joint-row" id="joint-select">
+    <button class="jbtn" data-joint="shoulder_yaw">Yaw</button>
+    <button class="jbtn" data-joint="shoulder_pitch">Pitch</button>
+    <button class="jbtn" data-joint="elbow_pitch">Elbow</button>
+    <button class="jbtn" data-joint="wrist_pitch">W&#8209;Pitch</button>
+    <button class="jbtn" data-joint="wrist_roll">W&#8209;Roll</button>
+  </div>
+  <div id="arc-status" style="font-size:11px;color:#9098b8;min-height:14px;margin-bottom:6px;"></div>
+  <div class="slider-group" style="margin-bottom:8px;">
+    <label>Gripper <span id="v-grip">100%</span></label>
+    <input type="range" id="s-grip" min="0" max="1" step="0.01" value="1">
   </div>
   <div class="btn-row">
     <button class="btn" onclick="setHome()">Home (up)</button>
@@ -176,6 +175,10 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { collides as collidesJS, selfTest as collisionSelfTest } from './arm_collision.js';
+
+// Drift guard: assert the JS collision port matches the tested Python fixtures.
+collisionSelfTest();
 
 // ─── SO-101 dimensions (meters) ──────────────────────────────────
 const BASE_HEIGHT   = 0.048;
@@ -475,6 +478,7 @@ function animate() {
   requestAnimationFrame(animate);
   applyAngles();
   updateHUD();
+  if (selectedJoint) updateArc();
   controls.update();
   renderer.render(scene, camera);
 }
@@ -547,40 +551,14 @@ function connect() {
 }
 connect();
 
-// ─── Test controls ───────────────────────────────────────────────
-const sliders = {
-  yaw:    document.getElementById('s-yaw'),
-  pitch:  document.getElementById('s-pitch'),
-  elbow:  document.getElementById('s-elbow'),
-  wpitch: document.getElementById('s-wpitch'),
-  wroll:  document.getElementById('s-wroll'),
-  grip:   document.getElementById('s-grip'),
-};
-const labels = {
-  yaw:    document.getElementById('v-yaw'),
-  pitch:  document.getElementById('v-pitch'),
-  elbow:  document.getElementById('v-elbow'),
-  wpitch: document.getElementById('v-wpitch'),
-  wroll:  document.getElementById('v-wroll'),
-  grip:   document.getElementById('v-grip'),
-};
+// ─── Test controls (gripper slider only; the 5 rotary joints use arcs) ───────
+const gripSlider = document.getElementById('s-grip');
+const gripLabel  = document.getElementById('v-grip');
 
 function readSliders() {
   if (!useSliders) return;
-  target.shoulder_yaw   = parseFloat(sliders.yaw.value);
-  target.shoulder_pitch = parseFloat(sliders.pitch.value);
-  target.elbow_pitch    = parseFloat(sliders.elbow.value);
-  target.wrist_pitch    = parseFloat(sliders.wpitch.value);
-  target.wrist_roll     = parseFloat(sliders.wroll.value);
-  target.gripper        = parseFloat(sliders.grip.value);
-
-  const deg = (v) => (v * 180 / Math.PI).toFixed(1) + '°';
-  labels.yaw.textContent    = deg(target.shoulder_yaw);
-  labels.pitch.textContent  = deg(target.shoulder_pitch);
-  labels.elbow.textContent  = deg(target.elbow_pitch);
-  labels.wpitch.textContent = deg(target.wrist_pitch);
-  labels.wroll.textContent  = deg(target.wrist_roll);
-  labels.grip.textContent   = (target.gripper * 100).toFixed(0) + '%';
+  target.gripper = parseFloat(gripSlider.value);
+  gripLabel.textContent = (target.gripper * 100).toFixed(0) + '%';
 }
 
 // ─── Drive the REAL arm ──────────────────────────────────────────
@@ -649,19 +627,155 @@ window.toggleDrive = () => {
   }
 };
 
-for (const s of Object.values(sliders)) {
-  s.addEventListener('input', () => { readSliders(); sendToArm(); });
-}
+gripSlider.addEventListener('input', () => { readSliders(); sendToArm(); });
 
 function syncSlidersFromTarget() {
-  sliders.yaw.value    = target.shoulder_yaw;
-  sliders.pitch.value  = target.shoulder_pitch;
-  sliders.elbow.value  = target.elbow_pitch;
-  sliders.wpitch.value = target.wrist_pitch;
-  sliders.wroll.value  = target.wrist_roll;
-  sliders.grip.value   = target.gripper;
-  readSliders();
+  gripSlider.value = target.gripper;
+  gripLabel.textContent = (target.gripper * 100).toFixed(0) + '%';
 }
+
+// ─── Interactive joint arcs ──────────────────────────────────────
+// Select a joint → a semicircular arc appears at its pivot, spanning its range
+// of motion. Each dot along the arc is a candidate angle, colored GREEN if that
+// angle is self-collision-free (with the other joints held) or RED if the arm
+// would hit itself there (collidesJS, the drift-guarded port). Drag the white
+// handle along the arc to set the angle. Replaces the abstract sliders with a
+// spatial control that shows the safe envelope directly.
+const ARC_R = 0.06;         // arc radius in meters
+const ARC_DOTS = 44;        // samples along the range
+const COL_SAFE = 0x35d17a;
+const COL_UNSAFE = 0xff4444;
+const AXIS_VEC = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0) };
+
+// Per-joint: the static parent frame the arc lives in, the pivot center in that
+// frame, the rotation axis, the local direction the child points at angle 0, and
+// the travel range. Centers/dims reuse the viewer's own link constants.
+const JOINT_ARCS = {
+  shoulder_yaw:   { label: 'Shoulder Yaw',   mount: armRoot,       center: [0, BASE_HEIGHT, 0],       axis: 'y', ref: [0, 0, -1], min: -Math.PI, max: Math.PI },
+  shoulder_pitch: { label: 'Shoulder Pitch', mount: yawPivot,      center: [0, 0, 0],                 axis: 'x', ref: [0, -1, 0], min: 0,        max: Math.PI },
+  elbow_pitch:    { label: 'Elbow',          mount: upperArmGroup, center: [0, -UPPER_ARM_LEN, 0],    axis: 'x', ref: [0, -1, 0], min: 0,        max: Math.PI },
+  wrist_pitch:    { label: 'Wrist Pitch',    mount: forearmGroup,  center: [0, -FOREARM_LEN, 0],      axis: 'x', ref: [0, -1, 0], min: -2,       max: 2 },
+  wrist_roll:     { label: 'Wrist Roll',     mount: wristGroup,    center: [0, -WRIST_LEN, 0],        axis: 'y', ref: [1, 0, 0],  min: -Math.PI, max: Math.PI },
+};
+
+let selectedJoint = null;
+let arcGroup = null;
+let arcDots = [];
+let arcHandle = null;
+const raycaster = new THREE.Raycaster();
+let dragging = false;
+const arcStatus = document.getElementById('arc-status');
+
+function jointDir(spec, theta) {
+  return new THREE.Vector3(spec.ref[0], spec.ref[1], spec.ref[2])
+    .applyAxisAngle(AXIS_VEC[spec.axis], theta);
+}
+
+function clearArc() {
+  if (arcGroup && arcGroup.parent) arcGroup.parent.remove(arcGroup);
+  arcGroup = null; arcDots = []; arcHandle = null;
+}
+
+function buildArc(joint) {
+  clearArc();
+  const spec = JOINT_ARCS[joint];
+  arcGroup = new THREE.Group();
+  spec.mount.add(arcGroup);
+  const dotGeo = new THREE.SphereGeometry(0.0035, 8, 6);
+  for (let i = 0; i < ARC_DOTS; i++) {
+    const m = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: COL_SAFE }));
+    arcGroup.add(m); arcDots.push(m);
+  }
+  arcHandle = new THREE.Mesh(new THREE.SphereGeometry(0.009, 14, 12),
+                            new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  arcGroup.add(arcHandle);
+  selectedJoint = joint;
+  updateArc();
+}
+
+function updateArc() {
+  const spec = JOINT_ARCS[selectedJoint];
+  if (!spec || !arcGroup) return;
+  const center = new THREE.Vector3(spec.center[0], spec.center[1], spec.center[2]);
+  for (let i = 0; i < ARC_DOTS; i++) {
+    const theta = spec.min + (spec.max - spec.min) * (i / (ARC_DOTS - 1));
+    arcDots[i].position.copy(center).addScaledVector(jointDir(spec, theta), ARC_R);
+    const pose = { ...target, [selectedJoint]: theta };
+    arcDots[i].material.color.setHex(collidesJS(pose).hit ? COL_UNSAFE : COL_SAFE);
+  }
+  const cur = target[selectedJoint];
+  arcHandle.position.copy(center).addScaledVector(jointDir(spec, cur), ARC_R);
+  const curHit = collidesJS(target).hit;
+  arcHandle.material.color.setHex(curHit ? 0xff9090 : 0xffffff);
+  arcStatus.textContent =
+    `${spec.label}: ${(cur * 180 / Math.PI).toFixed(0)}°  ${curHit ? '⚠ self-collision' : '✓ safe'}`;
+  arcStatus.style.color = curHit ? '#ff8080' : '#8fe0b0';
+}
+
+// Map a pointer event onto the selected arc's plane → (signed angle, radius).
+function arcHit(e, spec) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  spec.mount.updateWorldMatrix(true, false);
+  const wc = new THREE.Vector3(spec.center[0], spec.center[1], spec.center[2])
+    .applyMatrix4(spec.mount.matrixWorld);
+  const q = new THREE.Quaternion(); spec.mount.getWorldQuaternion(q);
+  const axis = AXIS_VEC[spec.axis].clone().applyQuaternion(q).normalize();
+  const ref = new THREE.Vector3(spec.ref[0], spec.ref[1], spec.ref[2])
+    .applyQuaternion(q).normalize();
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axis, wc);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(plane, hit)) return null;
+  const v = hit.sub(wc);
+  const dist = v.length();
+  const proj = v.clone().addScaledVector(axis, -v.dot(axis));
+  if (proj.lengthSq() < 1e-9) return { ang: 0, dist };
+  proj.normalize();
+  const ang = Math.atan2(new THREE.Vector3().crossVectors(ref, proj).dot(axis), ref.dot(proj));
+  return { ang, dist };
+}
+
+function setArcAngle(spec, ang) {
+  target[selectedJoint] = Math.max(spec.min, Math.min(spec.max, ang));
+  sendToArm();
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!selectedJoint) return;
+  const spec = JOINT_ARCS[selectedJoint];
+  const r = arcHit(e, spec);
+  if (r && Math.abs(r.dist - ARC_R) < 0.03) {   // grabbed near the arc track
+    dragging = true; controls.enabled = false;
+    setArcAngle(spec, r.ang);
+    e.preventDefault();
+  }
+});
+window.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const r = arcHit(e, JOINT_ARCS[selectedJoint]);
+  if (r) setArcAngle(JOINT_ARCS[selectedJoint], r.ang);
+});
+window.addEventListener('pointerup', () => {
+  if (dragging) { dragging = false; controls.enabled = true; }
+});
+
+function selectJoint(joint) {
+  document.querySelectorAll('.jbtn').forEach((b) =>
+    b.classList.toggle('selected', b.dataset.joint === joint));
+  if (!useSliders) toggleControls();   // local control owns target
+  buildArc(joint);
+}
+function deselectJoint() {
+  document.querySelectorAll('.jbtn').forEach((b) => b.classList.remove('selected'));
+  clearArc(); selectedJoint = null; arcStatus.textContent = '';
+}
+document.querySelectorAll('.jbtn').forEach((btn) => {
+  btn.addEventListener('click', () =>
+    selectedJoint === btn.dataset.joint ? deselectJoint() : selectJoint(btn.dataset.joint));
+});
 
 // Preset poses
 window.setHome = () => {
@@ -701,6 +815,7 @@ window.toggleControls = () => {
   btn.textContent = isOpen ? 'Hide Controls' : 'Test Controls';
   useSliders = isOpen;
   if (isOpen) syncSlidersFromTarget();
+  else deselectJoint();
 };
 
 // Start with arm in a natural pose
