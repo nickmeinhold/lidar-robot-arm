@@ -88,12 +88,24 @@ class ArmChatBot(ChatBot):
         if not fields:
             return
         username = str(fields.get("username") or "")
+        text = str(fields.get("message") or "").strip()
+        # Log EVERYTHING we see — a silently-ignored message is indistinguishable
+        # from a lost one without this (bit us live: an auto-capitalized mention
+        # vanished without a trace and read as "command worked, arm didn't move").
+        self.print(f"saw {username or '?'}: {text!r}")
         if username == self.botname:
             return  # our own reply echoing back — never self-respond
-        text = str(fields.get("message") or "").strip()
-        if not text.startswith(self.botname):
+        # Mention match is case-insensitive (phone keyboards auto-capitalize)
+        # and tolerates a single-@ ("@armbot") variant.
+        lowered = text.lower()
+        mention = self.botname.lower()
+        if lowered.startswith(mention):
+            rest = text[len(mention):].strip()
+        elif lowered.startswith(mention.lstrip("@")) or \
+                lowered.startswith("@" + mention.lstrip("@")):
+            rest = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
+        else:
             return  # ordinary chat, not addressed to the arm
-        rest = text[len(self.botname):].strip()
         if not rest:
             reply = self.engine.help()
         else:

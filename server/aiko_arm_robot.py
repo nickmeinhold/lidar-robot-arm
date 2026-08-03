@@ -223,7 +223,26 @@ class ArmCommandEngine:
         self._drive()
         return f"gripper at {self._grip * 100:.0f}%"
 
-    def joint(self, name, degrees) -> str:
+    # Thumb-friendly aliases: chat users type "wrist" or "wrist pitch", not
+    # "wrist_pitch". Multi-word names are joined by joint() before lookup.
+    JOINT_ALIASES = {
+        "wrist": "wrist_pitch",
+        "elbow": "elbow_pitch",
+        "roll": "wrist_roll",
+        "shoulder": "shoulder_pitch",
+        "base": "shoulder_yaw",
+        "pan": "shoulder_yaw",
+        "yaw": "shoulder_yaw",
+    }
+
+    def joint(self, *args) -> str:
+        """``joint <name...> <degrees>`` — the LAST token is the angle, every
+        token before it is the joint name (so "wrist pitch 20" works)."""
+        if len(args) < 2:
+            return f"usage: joint <name> <degrees> — joints: {', '.join(JOINT_NAMES)}"
+        *name_parts, degrees = args
+        name = "_".join(str(p).lower() for p in name_parts)
+        name = self.JOINT_ALIASES.get(name, name)
         if name not in JOINT_NAMES:
             return f"unknown joint '{name}'. try: {', '.join(JOINT_NAMES)}"
         try:
