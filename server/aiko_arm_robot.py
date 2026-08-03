@@ -109,21 +109,31 @@ class _ArmLink:
         ).start()
 
     def send_state(
-        self, angles: dict[str, float], gripper: float, timeout: float = 3.0
+        self,
+        angles: dict[str, float],
+        gripper: float,
+        drive_gripper: bool = True,
+        timeout: float = 3.0,
     ) -> None:
-        """Send one ``arm_state`` (blocks until sent or *timeout*). Raises on failure."""
+        """Send one ``arm_state`` (blocks until sent or *timeout*). Raises on failure.
+
+        ``drive_gripper=False`` maps to ``tracking.hand=false`` — the server then
+        leaves the gripper servo untouched (used by the reference seed).
+        """
         fut = asyncio.run_coroutine_threadsafe(
-            self._send(angles, gripper), self._loop
+            self._send(angles, gripper, drive_gripper), self._loop
         )
         fut.result(timeout=timeout)
 
-    async def _send(self, angles: dict[str, float], gripper: float) -> None:
+    async def _send(
+        self, angles: dict[str, float], gripper: float, drive_gripper: bool
+    ) -> None:
         payload = json.dumps(
             {
                 "type": "arm_state",
                 "timestamp": 0.0,  # server only echoes this for latency pings
                 "angles": {**angles, "gripper": max(0.0, min(1.0, gripper))},
-                "tracking": {"body": True, "hand": True},
+                "tracking": {"body": True, "hand": drive_gripper},
             }
         )
         async with websockets.connect(self._url) as ws:
@@ -165,6 +175,7 @@ class SO100ArmImpl(SO100Arm):
         self._link = _ArmLink(url)
         self._pose = dict(HOME_POSE)
         self._grip = HOME_GRIP
+        self._seeded = False  # reference seed sent yet? (see _drive)
         log.info("SO100Arm linking to %s", url)
 
     # --- helpers ---------------------------------------------------------
@@ -176,8 +187,20 @@ class SO100ArmImpl(SO100Arm):
         aiko_process.message.publish(self.topic_out, generate("message", [text]))
 
     def _drive(self) -> None:
-        """Push the current pose to the arm server, replying on success/failure."""
+        """Push the current pose to the arm server, replying on success/failure.
+
+        First drive ever sends a zero-pose *reference seed* with
+        ``tracking.hand=false``: the controller locks its reference on the first
+        ``body:OK`` frame, so seeding zeros pins the reference at 0 — making all
+        our joint angles mean "relative to the arm's startup pose" — while the
+        ``hand=false`` leaves the gripper servo untouched (zero motion seed).
+        Without this, our first real command would silently BECOME the zero.
+        """
         try:
+            if not self._seeded:
+                self._link.send_state(dict(HOME_POSE), 0.0, drive_gripper=False)
+                self._seeded = True
+                time.sleep(0.2)  # let the server lock the reference first
             self._link.send_state(self._pose, self._grip)
         except Exception as exc:  # noqa: BLE001 — surface any failure into chat
             self._reply(f"⚠️ couldn't reach the arm server: {exc}")
