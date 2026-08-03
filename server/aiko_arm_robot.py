@@ -140,6 +140,112 @@ class _ArmLink:
             await ws.send(payload)
 
 
+class ArmCommandEngine:
+    """Pose state + command execution — the ONE implementation of the arm's
+    chat-facing vocabulary, shared by the bus-RPC Actor (this file) and the
+    aiko-chat bot (``aiko_arm_chatbot.py``). Every command returns the reply
+    string to surface back to the human; hardware failures come back as a
+    ⚠️ string rather than raising, so callers can always just relay."""
+
+    COMMANDS = ("ready", "home", "open", "close", "gripper", "joint", "wave")
+
+    def __init__(self, url: str) -> None:
+        self._link = _ArmLink(url)
+        self._pose = dict(HOME_POSE)
+        self._grip = HOME_GRIP
+        self._seeded = False  # reference seed sent yet? (see _drive)
+
+    def help(self) -> str:
+        return (f"commands: {', '.join(self.COMMANDS)} · "
+                f"joints: {', '.join(JOINT_NAMES)} · "
+                "e.g. 'joint wrist_pitch 20', 'gripper 50'")
+
+    def execute(self, command: str, args: list[str]) -> str:
+        """Dispatch a named command with string args (chat / RPC boundary —
+        decode-to-typed happens inside each command, once, here at the edge)."""
+        if command in ("help", "?"):
+            return self.help()
+        if command not in self.COMMANDS:
+            return f"unknown command '{command}'. {self.help()}"
+        try:
+            return getattr(self, command)(*args)
+        except TypeError:
+            return f"'{command}' arguments look wrong. {self.help()}"
+        except Exception as exc:  # noqa: BLE001 — surface into chat, never die
+            return f"⚠️ couldn't reach the arm server: {exc}"
+
+    def _drive(self) -> None:
+        """Push the current pose to the arm server.
+
+        First drive ever sends a zero-pose *reference seed* with
+        ``tracking.hand=false``: the controller locks its reference on the first
+        ``body:OK`` frame, so seeding zeros pins the reference at 0 — making all
+        our joint angles mean "relative to the arm's startup pose" — while the
+        ``hand=false`` leaves the gripper servo untouched (zero motion seed).
+        Without this, our first real command would silently BECOME the zero.
+        """
+        if not self._seeded:
+            self._link.send_state(dict(HOME_POSE), 0.0, drive_gripper=False)
+            self._seeded = True
+            time.sleep(0.2)  # let the server lock the reference first
+        self._link.send_state(self._pose, self._grip)
+
+    # --- commands (each returns the chat reply) --------------------------
+
+    def ready(self) -> str:
+        self._pose = dict(READY_POSE)
+        self._grip = READY_GRIP
+        self._drive()
+        return "ready — gripper presented 🙌"
+
+    def home(self) -> str:
+        self._pose = dict(HOME_POSE)
+        self._grip = HOME_GRIP
+        self._drive()
+        return "home — all joints centred"
+
+    def open(self) -> str:
+        self._grip = 1.0
+        self._drive()
+        return "gripper open"
+
+    def close(self) -> str:
+        self._grip = 0.0
+        self._drive()
+        return "gripper closed"
+
+    def gripper(self, percent) -> str:
+        try:
+            pct = float(percent)
+        except (TypeError, ValueError):
+            return f"gripper: '{percent}' isn't a number (0–100)"
+        self._grip = max(0.0, min(1.0, pct / 100.0))
+        self._drive()
+        return f"gripper at {self._grip * 100:.0f}%"
+
+    def joint(self, name, degrees) -> str:
+        if name not in JOINT_NAMES:
+            return f"unknown joint '{name}'. try: {', '.join(JOINT_NAMES)}"
+        try:
+            deg = float(degrees)
+        except (TypeError, ValueError):
+            return f"joint {name}: '{degrees}' isn't a number of degrees"
+        self._pose[name] = math.radians(deg)
+        self._drive()
+        return f"{name} → {deg:.0f}° (server clamps to safe range)"
+
+    def wave(self) -> str:
+        saved_roll = self._pose["wrist_roll"]
+        try:
+            for offset in (25, -25, 25, -25, 0):
+                self._pose["wrist_roll"] = saved_roll + math.radians(offset)
+                self._drive()
+                time.sleep(0.35)
+        finally:
+            self._pose["wrist_roll"] = saved_roll
+        return "👋"
+
+
 class SO100Arm(Actor):
     Interface.default("SO100Arm", "__main__.SO100ArmImpl")
 
@@ -172,10 +278,7 @@ class SO100ArmImpl(SO100Arm):
         context.call_init(self, "Actor", context)
         self.share["source_file"] = f"v{_VERSION}⇒ {__file__}"
         url = os.environ.get("ARM_WS_URL", DEFAULT_URL)
-        self._link = _ArmLink(url)
-        self._pose = dict(HOME_POSE)
-        self._grip = HOME_GRIP
-        self._seeded = False  # reference seed sent yet? (see _drive)
+        self._engine = ArmCommandEngine(url)
         log.info("SO100Arm linking to %s", url)
 
     # --- helpers ---------------------------------------------------------
@@ -186,84 +289,31 @@ class SO100ArmImpl(SO100Arm):
         print(f"[{self.name}] {text}", flush=True)
         aiko_process.message.publish(self.topic_out, generate("message", [text]))
 
-    def _drive(self) -> None:
-        """Push the current pose to the arm server, replying on success/failure.
+    def _run(self, command: str, *args) -> None:
+        self._reply(self._engine.execute(command, [str(a) for a in args]))
 
-        First drive ever sends a zero-pose *reference seed* with
-        ``tracking.hand=false``: the controller locks its reference on the first
-        ``body:OK`` frame, so seeding zeros pins the reference at 0 — making all
-        our joint angles mean "relative to the arm's startup pose" — while the
-        ``hand=false`` leaves the gripper servo untouched (zero motion seed).
-        Without this, our first real command would silently BECOME the zero.
-        """
-        try:
-            if not self._seeded:
-                self._link.send_state(dict(HOME_POSE), 0.0, drive_gripper=False)
-                self._seeded = True
-                time.sleep(0.2)  # let the server lock the reference first
-            self._link.send_state(self._pose, self._grip)
-        except Exception as exc:  # noqa: BLE001 — surface any failure into chat
-            self._reply(f"⚠️ couldn't reach the arm server: {exc}")
-            raise
-
-    # --- commands --------------------------------------------------------
+    # --- commands (thin RPC shims over the shared ArmCommandEngine) -------
 
     def ready(self):
-        self._pose = dict(READY_POSE)
-        self._grip = READY_GRIP
-        self._drive()
-        self._reply("ready — gripper presented 🙌")
+        self._run("ready")
 
     def home(self):
-        self._pose = dict(HOME_POSE)
-        self._grip = HOME_GRIP
-        self._drive()
-        self._reply("home — all joints centred")
+        self._run("home")
 
     def open(self):
-        self._grip = 1.0
-        self._drive()
-        self._reply("gripper open")
+        self._run("open")
 
     def close(self):
-        self._grip = 0.0
-        self._drive()
-        self._reply("gripper closed")
+        self._run("close")
 
     def gripper(self, percent):
-        try:
-            pct = float(percent)
-        except (TypeError, ValueError):
-            self._reply(f"gripper: '{percent}' isn't a number (0–100)")
-            return
-        self._grip = max(0.0, min(1.0, pct / 100.0))
-        self._drive()
-        self._reply(f"gripper at {self._grip * 100:.0f}%")
+        self._run("gripper", percent)
 
     def joint(self, name, degrees):
-        if name not in JOINT_NAMES:
-            self._reply(f"unknown joint '{name}'. try: {', '.join(JOINT_NAMES)}")
-            return
-        try:
-            deg = float(degrees)
-        except (TypeError, ValueError):
-            self._reply(f"joint {name}: '{degrees}' isn't a number of degrees")
-            return
-        self._pose[name] = math.radians(deg)
-        self._drive()
-        self._reply(f"{name} → {deg:.0f}° (server clamps to safe range)")
+        self._run("joint", name, degrees)
 
     def wave(self):
-        saved_roll = self._pose["wrist_roll"]
-        try:
-            for offset in (25, -25, 25, -25, 0):
-                self._pose["wrist_roll"] = saved_roll + math.radians(offset)
-                self._drive()
-                time.sleep(0.35)
-        finally:
-            self._pose["wrist_roll"] = saved_roll
-        self._reply("👋")
-
+        self._run("wave")
 
 def main() -> None:
     args = [a for a in sys.argv[1:]]
