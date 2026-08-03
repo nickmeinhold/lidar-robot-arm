@@ -160,13 +160,20 @@ class ArmCommandEngine:
                 f"joints: {', '.join(JOINT_NAMES)} · "
                 "e.g. 'joint wrist_pitch 20', 'gripper 50'")
 
+    # Commands that take no arguments — trailing decorations are tolerated
+    # ("wave 👋 from angie" waves; observed live from the island, 2026-08-03).
+    _NO_ARG_COMMANDS = ("ready", "home", "open", "close", "wave")
+
     def execute(self, command: str, args: list[str]) -> str:
         """Dispatch a named command with string args (chat / RPC boundary —
         decode-to-typed happens inside each command, once, here at the edge)."""
+        command = command.lower()  # 'Wave' == 'wave' (phone keyboards capitalize)
         if command in ("help", "?"):
             return self.help()
         if command not in self.COMMANDS:
             return f"unknown command '{command}'. {self.help()}"
+        if command in self._NO_ARG_COMMANDS:
+            args = []  # ignore trailing flourish, don't reject it
         try:
             return getattr(self, command)(*args)
         except TypeError:
