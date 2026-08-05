@@ -95,17 +95,17 @@ class ArmChatBot(ChatBot):
         self.print(f"saw {username or '?'}: {text!r}")
         if username == self.botname:
             return  # our own reply echoing back — never self-respond
-        # Mention match is case-insensitive (phone keyboards auto-capitalize)
-        # and tolerates a single-@ ("@armbot") variant.
-        lowered = text.lower()
-        mention = self.botname.lower()
-        if lowered.startswith(mention):
-            rest = text[len(mention):].strip()
-        elif lowered.startswith(mention.lstrip("@")) or \
-                lowered.startswith("@" + mention.lstrip("@")):
-            rest = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
-        else:
+        # Addressing grammar — reconciled with the bridge's robot sigil
+        # (aiko-chat-bridge robots.py: ^@@ required, single @ is a PERSON
+        # mention, never a robot command). The FIRST whitespace token must be
+        # exactly '@@<botname>' (case-insensitive — phone keyboards auto-
+        # capitalize): '@armbot wave' is someone autocomplete-mentioning the
+        # bot in conversation and must not drive hardware; '@@arm wave' is a
+        # different (or mistyped) robot, not a prefix of us.
+        tokens = text.split()
+        if not tokens or tokens[0].lower() != self.botname.lower():
             return  # ordinary chat, not addressed to the arm
+        rest = " ".join(tokens[1:])
         if not rest:
             reply = self.engine.help()
         else:
@@ -130,6 +130,9 @@ def main() -> None:
         channel = args[i + 1]
         del args[i:i + 2]
     botname = args[0] if args else DEFAULT_BOTNAME
+    # The robot sigil is exactly two '@' (bridge grammar): normalize whatever
+    # was typed ('armbot', '@armbot') so the matcher never accepts single-@.
+    botname = "@@" + botname.lstrip("@")
 
     os.environ.setdefault("ARM_WS_URL", url)
     init_args = aiko.actor_args(_ACTOR_BOT, protocol=_PROTOCOL_BOT,
