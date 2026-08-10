@@ -33,7 +33,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import sys
+import threading
+import time
 
 import aiko_services as aiko
 import aiko_chat.bot as _aiko_bot
@@ -137,6 +140,12 @@ class ArmChatBot(ChatBot):
     :meth:`process_message`.
     """
 
+    # A command already running plus this many waiting = "busy". Beyond it the
+    # bot answers immediately instead of enqueueing — a deep silent queue makes
+    # people resend, which only deepens the queue (backlog spiral).
+    BUSY_DEPTH = 2
+    BUSY_REPLY = "🙋 busy — try again in a moment"
+
     def __init__(self, context, botname: str, ws_url: str, channel: str,
                  wave_on_message: bool = False):
         self.current_channel = channel  # read by ChatBotImpl's discovery hook
@@ -148,8 +157,31 @@ class ArmChatBot(ChatBot):
         self.wave_on_message = wave_on_message
         self._wave_cooldown_s = 8.0
         self._last_greet = 0.0
+        # Commands execute on a worker thread, FIFO. process_message stays
+        # fast (parse + enqueue), so a 6s wave sequence no longer blocks the
+        # aiko message loop — and the queue's depth is the "busy" signal.
+        self._work: "queue.Queue" = queue.Queue()
+        threading.Thread(target=self._worker, daemon=True,
+                         name="arm-commands").start()
         log.info("ArmChatBot %s watching #%s, arm at %s (greeter=%s)",
                  botname, channel, ws_url, wave_on_message)
+
+    def _worker(self) -> None:
+        while True:
+            job = self._work.get()
+            try:
+                job()
+            except Exception:  # noqa: BLE001 — a bad command must not kill the worker
+                log.exception("command job failed")
+            finally:
+                self._work.task_done()
+
+    def _submit(self, job) -> bool:
+        """Enqueue *job* for the worker; False = at capacity (caller says busy)."""
+        if self._work.qsize() >= self.BUSY_DEPTH:
+            return False
+        self._work.put(job)
+        return True
 
     def process_message(self, payload_in, **kwargs):
         fields = _decode_message(payload_in)
@@ -175,24 +207,33 @@ class ArmChatBot(ChatBot):
             # Ordinary chat. In greeter mode, wave hello (cooldown-limited) —
             # physical motion only, no chat reply (a reply per message is spam).
             if self.wave_on_message and tokens:
-                import time as _time
-                now = _time.monotonic()
+                now = time.monotonic()
                 if now - self._last_greet >= self._wave_cooldown_s:
                     self._last_greet = now
                     self.print(f"greeting {username or '?'} 👋")
-                    self.engine.execute("wave", [])
+                    # Greets are decorative: if commands are queued, skip.
+                    self._submit(lambda: self.engine.execute("wave", []))
             return
         rest = " ".join(tokens[1:])
-        if not rest:
-            reply = self.engine.help()
-        else:
-            command, *args = rest.split()
-            if command.lower() in self.engine.COMMANDS or \
-                    command.lower() in ("help", "?"):
-                reply = self.engine.execute(command, args)  # fast, deterministic
+
+        def job(rest=rest, username=username):
+            if not rest:
+                reply = self.engine.help()
             else:
-                reply = self._english(rest)  # free text → translated sequence
-        self.print(f"{username or '?'}: {rest!r} -> {reply!r}")
+                command, *args = rest.split()
+                if command.lower() in self.engine.COMMANDS or \
+                        command.lower() in ("help", "?"):
+                    reply = self.engine.execute(command, args)  # deterministic
+                else:
+                    reply = self._english(rest)  # free text → translated sequence
+            self.print(f"{username or '?'}: {rest!r} -> {reply!r}")
+            self._reply(reply)
+
+        if not self._submit(job):
+            self.print(f"{username or '?'}: {rest!r} -> BUSY (queue full)")
+            self._reply(self.BUSY_REPLY)
+
+    def _reply(self, reply: str) -> None:
         if self.chat_server:
             self.chat_server.send_message(
                 self.botname, [self.current_channel], reply)

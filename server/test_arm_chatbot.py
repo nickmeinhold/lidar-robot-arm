@@ -35,7 +35,12 @@ class RecordingEngine:
 
 
 class Bot:
-    """The minimal surface process_message touches, minus the aiko Actor."""
+    """The minimal surface process_message touches, minus the aiko Actor.
+
+    ``_submit`` runs jobs INLINE (the real class uses a worker queue), keeping
+    fixtures synchronous; ``BUSY_DEPTH`` semantics get their own fixture via a
+    rejecting ``_submit`` override.
+    """
 
     botname = "@@armbot"
     chat_server = None
@@ -43,10 +48,19 @@ class Bot:
     _wave_cooldown_s = 8.0
     _last_greet = 0.0
     current_channel = "general"
+    BUSY_REPLY = ArmChatBot.BUSY_REPLY
     print = staticmethod(lambda *_: None)
 
     def __init__(self):
         self.engine = RecordingEngine()
+        self.replies = []
+
+    def _submit(self, job):
+        job()
+        return True
+
+    def _reply(self, reply):
+        self.replies.append(reply)
 
 
 def see(bot: Bot, message: str, username: str = "nick") -> None:
@@ -178,3 +192,21 @@ def test_empty_translation_replies_help_hint(monkeypatch):
     bot._english = m.ArmChatBot._english.__get__(bot)
     see(bot, "@@armbot what is the meaning of life")
     assert bot.engine.calls == [] and bot.engine.help_calls == 1
+
+
+# --- busy backpressure -------------------------------------------------------
+
+def test_full_queue_replies_busy_and_runs_nothing():
+    bot = Bot()
+    bot._submit = lambda job: False  # queue at BUSY_DEPTH
+    see(bot, "@@armbot wave")
+    assert bot.engine.calls == []
+    assert bot.replies == [ArmChatBot.BUSY_REPLY]
+
+
+def test_greeter_skips_silently_when_queue_full():
+    bot = Bot()
+    bot.wave_on_message = True
+    bot._submit = lambda job: False
+    see(bot, "hello robot!")
+    assert bot.engine.calls == [] and bot.replies == []
