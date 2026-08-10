@@ -1,0 +1,306 @@
+<!-- Standalone test: load the real SO-101 from the URDF + STLs and drive its 6
+     joints. Isolates the model loader so it can be verified before wiring it
+     into the full viewer. Serve over HTTP: http://localhost:8099/models_test.html -->
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #1a1a2e; font-family: system-ui, sans-serif; overflow: hidden; }
+  #panel {
+    position: fixed; top: 10px; left: 10px; z-index: 10; width: 230px;
+    background: rgba(20,22,38,0.9); border: 1px solid #333355; border-radius: 8px;
+    padding: 12px; color: #c0c8e0; font-size: 12px;
+  }
+  #panel h3 { margin: 0 0 8px; font-size: 14px; }
+  .row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+  .row label { display: flex; justify-content: space-between; }
+  .row span { color: #6ab0f9; }
+  input[type=range] { width: 100%; }
+  #status { margin-top: 6px; color: #8fe0b0; min-height: 15px; }
+  #tooltip {
+    position: fixed; z-index: 20; display: none; pointer-events: none;
+    background: rgba(30,34,54,0.95); color: #eaf0ff; border: 1px solid #4a90d9;
+    border-radius: 5px; padding: 3px 8px; font: 12px system-ui, sans-serif;
+    transform: translate(12px, 12px);
+  }
+</style>
+<div id="tooltip"></div>
+<div id="panel">
+  <h3>SO-101 model test</h3>
+  <div id="controls"></div>
+  <div id="status">loading…</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+
+<script>
+// Surface ANY error (incl. module import failures) to the visible status.
+function showErr(msg) {
+  const s = document.getElementById('status');
+  if (s) { s.textContent = msg; s.style.color = '#ff8080'; }
+}
+window.addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.error) + (e.filename ? ' @ ' + e.filename.split('/').pop() : '')));
+window.addEventListener('unhandledrejection', (e) => showErr('REJECT: ' + (e.reason && e.reason.message || e.reason)));
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { loadSO101, JOINT_MAP } from './so101_model.js';
+document.getElementById('status').textContent = 'module loaded, fetching…';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.01, 10);
+camera.position.set(0.35, 0.3, 0.4);
+camera.lookAt(0, 0.15, 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+document.body.prepend(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.13, 0); controls.enableDamping = true; controls.update();
+
+scene.add(new THREE.AmbientLight(0x606080, 1.0));
+const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(0.4, 0.7, 0.5);
+key.castShadow = true; scene.add(key);
+const fill = new THREE.DirectionalLight(0x88aaff, 0.5); fill.position.set(-0.4, 0.3, -0.3); scene.add(fill);
+scene.add(new THREE.GridHelper(0.6, 30, 0x333355, 0x222244));
+
+const ranges = {
+  shoulder_yaw: [-1.9, 1.9, 0], shoulder_pitch: [-1.7, 1.7, 0],
+  elbow_pitch: [-1.7, 1.7, 0], wrist_pitch: [-1.65, 1.65, 0],
+  wrist_roll: [-2.7, 2.8, 0], gripper: [-0.17, 1.74, 1.0],
+};
+const angles = Object.fromEntries(Object.keys(JOINT_MAP).map((k) => [k, ranges[k][2]]));
+
+const controlsDiv = document.getElementById('controls');
+for (const k of Object.keys(JOINT_MAP)) {
+  const [lo, hi, v] = ranges[k];
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label>${k} <span id="v-${k}">${v.toFixed(2)}</span></label>
+    <input type="range" id="s-${k}" min="${lo}" max="${hi}" step="0.01" value="${v}">`;
+  controlsDiv.appendChild(row);
+}
+
+// ─── Click-to-select joints + draggable range arcs ───────────────
+const clickTargets = [];
+let selectedJoint = null;
+const raycaster = new THREE.Raycaster();
+let arcGroup = null, arcDots = [], arcHandle = null;
+let dragging = false, dragA0 = 0, dragV0 = 0, downX = 0, downY = 0;
+const ARC_R = 0.06, ARC_DOTS = 40;
+
+function jointWorld(ourName) {
+  const jr = model.jointRot[JOINT_MAP[ourName]];
+  if (!jr) return null;
+  const jg = jr.child.parent;                 // jointGroup with the origin transform
+  jg.updateWorldMatrix(true, false);
+  const center = new THREE.Vector3().setFromMatrixPosition(jg.matrixWorld);
+  const q = new THREE.Quaternion(); jg.getWorldQuaternion(q);
+  const axis = jr.axis.clone().applyQuaternion(q).normalize();
+  let ref = new THREE.Vector3(0, 1, 0);
+  if (Math.abs(ref.dot(axis)) > 0.9) ref = new THREE.Vector3(1, 0, 0);
+  ref.projectOnPlane(axis).normalize();
+  return { center, axis, ref };
+}
+const dirAt = (f, ang) => f.ref.clone().applyAxisAngle(f.axis, ang);
+
+function clearArc() { if (arcGroup) scene.remove(arcGroup); arcGroup = null; arcDots = []; arcHandle = null; }
+
+function buildArc(joint) {
+  clearArc();
+  selectedJoint = joint;
+  arcGroup = new THREE.Group(); scene.add(arcGroup);
+  const dotGeo = new THREE.SphereGeometry(0.004, 8, 6);
+  for (let i = 0; i < ARC_DOTS; i++) {
+    const d = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0x35d17a }));
+    arcGroup.add(d); arcDots.push(d);
+  }
+  arcHandle = new THREE.Mesh(new THREE.SphereGeometry(0.009, 14, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  arcGroup.add(arcHandle);
+  updateArc();
+}
+
+function updateArc() {
+  if (!arcGroup || !model) return;
+  const f = jointWorld(selectedJoint); if (!f) return;
+  const [lo, hi] = ranges[selectedJoint];
+  for (let i = 0; i < ARC_DOTS; i++) {
+    const ang = lo + (hi - lo) * (i / (ARC_DOTS - 1));
+    arcDots[i].position.copy(f.center).addScaledVector(dirAt(f, ang), ARC_R);
+  }
+  arcHandle.position.copy(f.center).addScaledVector(dirAt(f, angles[selectedJoint]), ARC_R);
+  document.getElementById('status').textContent =
+    `${selectedJoint}: ${(angles[selectedJoint] * 180 / Math.PI).toFixed(0)}°  — drag the arc`;
+}
+
+function arcHitAt(e, f) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(f.axis, f.center);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(plane, hit)) return null;
+  const v = hit.sub(f.center); const dist = v.length();
+  const proj = v.clone().projectOnPlane(f.axis);
+  if (proj.lengthSq() < 1e-9) return null;
+  proj.normalize();
+  return { ang: Math.atan2(new THREE.Vector3().crossVectors(f.ref, proj).dot(f.axis), f.ref.dot(proj)), dist };
+}
+
+// ─── Section hover (highlight + name) → click to select ──────────
+// Hover a rigid section of the arm → it highlights and a label names the joint
+// that section controls; click to grab that joint's arc. Each section maps to
+// one joint so the label is unambiguous.
+const SECTIONS = {
+  // base_link is the fixed mount — deliberately NOT selectable.
+  shoulder_link:            { joint: 'shoulder_yaw',   name: 'Base rotation' },
+  upper_arm_link:           { joint: 'shoulder_pitch', name: 'Shoulder' },
+  lower_arm_link:           { joint: 'elbow_pitch',    name: 'Elbow' },
+  wrist_link:               { joint: 'wrist_pitch',    name: 'Wrist pitch' },
+  gripper_link:             { joint: 'wrist_roll',     name: 'Wrist roll' },
+  moving_jaw_so101_v1_link: { joint: 'gripper',        name: 'Gripper' },
+};
+const linkMat = {};              // per-link material clone (for independent highlight)
+let hoveredLink = null;
+const tooltip = document.getElementById('tooltip');
+
+function pickLink(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(clickTargets, false);
+  return hits.length ? hits[0].object.userData.link : null;
+}
+
+function highlight(linkName, on) {
+  const m = linkMat[linkName];
+  if (m) m.emissive.setHex(on ? 0x24406a : 0x000000);
+}
+function setHover(linkName, e) {
+  if (linkName !== hoveredLink) {
+    if (hoveredLink && hoveredLink !== selectedLink()) highlight(hoveredLink, false);
+    hoveredLink = linkName;
+    if (linkName) highlight(linkName, true);
+  }
+  if (linkName) {
+    tooltip.textContent = SECTIONS[linkName].name;
+    tooltip.style.left = e.clientX + 'px'; tooltip.style.top = e.clientY + 'px';
+    tooltip.style.display = 'block';
+    renderer.domElement.style.cursor = 'pointer';
+  } else {
+    tooltip.style.display = 'none';
+    renderer.domElement.style.cursor = 'default';
+  }
+}
+function selectedLink() {
+  for (const [ln, s] of Object.entries(SECTIONS)) if (s.joint === selectedJoint) return ln;
+  return null;
+}
+function deselectJoint() {
+  const sl = selectedLink();
+  clearArc(); selectedJoint = null;
+  if (sl && sl !== hoveredLink) highlight(sl, false);
+  if (model) document.getElementById('status').textContent = 'hover the arm to see joints, click to select';
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  downX = e.clientX; downY = e.clientY;
+  if (!selectedJoint) return;
+  const f = jointWorld(selectedJoint); if (!f) return;
+  const r = arcHitAt(e, f);
+  if (r && Math.abs(r.dist - ARC_R) < 0.035) {
+    dragging = true; controls.enabled = false;
+    dragA0 = r.ang; dragV0 = angles[selectedJoint];
+    e.preventDefault();
+  }
+});
+window.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const f = jointWorld(selectedJoint); const r = arcHitAt(e, f);
+  if (!r) return;
+  let delta = r.ang - dragA0;
+  while (delta > Math.PI) delta -= 2 * Math.PI;
+  while (delta < -Math.PI) delta += 2 * Math.PI;
+  const [lo, hi] = ranges[selectedJoint];
+  angles[selectedJoint] = Math.max(lo, Math.min(hi, dragV0 + delta));
+  applyAngles();
+});
+window.addEventListener('pointerup', (e) => {
+  if (dragging) { dragging = false; controls.enabled = true; return; }
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
+  const ln = pickLink(e);
+  if (!ln) { deselectJoint(); return; }
+  const j = SECTIONS[ln].joint;
+  if (selectedJoint === j) { deselectJoint(); return; }
+  const prev = selectedLink();
+  if (prev && prev !== ln) highlight(prev, false);
+  buildArc(j);
+  highlight(ln, true);        // keep the selected section lit
+});
+renderer.domElement.addEventListener('pointermove', (e) => {   // hover highlight + label
+  if (dragging) return;
+  setHover(pickLink(e), e);
+});
+
+let model = null;
+const sliders = {};
+
+function applyAngles() {
+  if (!model) return;
+  model.setJoints(angles);
+  for (const k of Object.keys(JOINT_MAP)) {
+    if (sliders[k]) sliders[k].value = angles[k];
+    const vs = document.getElementById(`v-${k}`);
+    if (vs) vs.textContent = angles[k].toFixed(2);
+  }
+  if (selectedJoint) updateArc();
+}
+
+loadSO101('models/SO101/', {
+  onProgress: (n, t) => { document.getElementById('status').textContent = `loading meshes ${n}/${t}…`; },
+}).then((m) => {
+  model = m;
+  model.root.rotation.x = -Math.PI / 2;   // URDF Z-up -> scene Y-up
+  scene.add(model.root);
+  model.setJoints(angles);
+
+  // Per-link material clones so a hovered section highlights independently.
+  for (const linkName of Object.keys(SECTIONS)) {
+    const group = model.linkGroups[linkName];
+    if (!group) continue;
+    const m = new THREE.MeshStandardMaterial({ color: 0x9aa4bf, roughness: 0.6, metalness: 0.25 });
+    linkMat[linkName] = m;
+    group.traverse((o) => { if (o.isMesh) { o.material = m; o.userData.link = linkName; clickTargets.push(o); } });
+  }
+
+  document.getElementById('status').textContent = 'loaded ✓ — click a joint on the arm, or use sliders';
+  for (const k of Object.keys(JOINT_MAP)) {
+    const s = document.getElementById(`s-${k}`);
+    sliders[k] = s;
+    s.addEventListener('input', () => { angles[k] = parseFloat(s.value); applyAngles(); });
+  }
+}).catch((e) => {
+  document.getElementById('status').textContent = 'ERROR: ' + e.message;
+  document.getElementById('status').style.color = '#ff8080';
+  console.error(e);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
