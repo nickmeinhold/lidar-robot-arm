@@ -31,6 +31,7 @@ tunnel first and point aiko at it::
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -48,6 +49,50 @@ log = get_logger(__name__)
 
 DEFAULT_BOTNAME = "@@armbot"
 DEFAULT_CHANNEL = "general"
+
+# --- English → command translation (zero-cost Max via OAuth Bearer) ---------
+# An unrecognized "@@armbot <free text>" goes through Claude Haiku, which may
+# ONLY emit the engine's own vocabulary — the engine validates and the arm
+# server clamps, so wild input can never exceed what typed commands already do.
+_OAUTH_TOKEN = (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+                or os.environ.get("ANTHROPIC_OAUTH_TOKEN") or "")
+_TRANSLATE_SYSTEM = (
+    "You translate chat messages into robot arm commands. Vocabulary: ready, "
+    "home, open, close, wave, 'gripper <0-100>', 'joint <shoulder_yaw|"
+    "shoulder_pitch|elbow_pitch|wrist_pitch|wrist_roll> <degrees -50..50>'. "
+    "Reply ONLY a compact JSON array of at most 6 command strings, no code "
+    "fences, no prose. Sequences are allowed (a wiggle = several joint moves). "
+    "If the message is not an arm request, reply []"
+)
+
+
+def translate_to_commands(text: str) -> list[str]:
+    """Free text → engine command strings via Claude Haiku. [] on any failure."""
+    if not _OAUTH_TOKEN:
+        return []
+    import urllib.request
+    body = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 150,
+        "system": _TRANSLATE_SYSTEM,
+        "messages": [{"role": "user", "content": text[:500]}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=body,
+        headers={
+            "Authorization": f"Bearer {_OAUTH_TOKEN}",
+            "anthropic-beta": "oauth-2025-04-20",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        })
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            reply = json.loads(resp.read())["content"][0]["text"]
+        commands = json.loads(reply.strip())
+        return [c for c in commands if isinstance(c, str)][:6]
+    except Exception as exc:  # noqa: BLE001 — degrade to "didn't catch that"
+        log.warning("translate failed: %s", exc)
+        return []
 
 
 def _any_version_server_filter() -> aiko.ServiceFilter:
@@ -125,11 +170,29 @@ class ArmChatBot(ChatBot):
             reply = self.engine.help()
         else:
             command, *args = rest.split()
-            reply = self.engine.execute(command, args)
+            if command.lower() in self.engine.COMMANDS or \
+                    command.lower() in ("help", "?"):
+                reply = self.engine.execute(command, args)  # fast, deterministic
+            else:
+                reply = self._english(rest)  # free text → translated sequence
         self.print(f"{username or '?'}: {rest!r} -> {reply!r}")
         if self.chat_server:
             self.chat_server.send_message(
                 self.botname, [self.current_channel], reply)
+
+    def _english(self, text: str) -> str:
+        """Translate free text into a command sequence and run it."""
+        commands = translate_to_commands(text)
+        if not commands:
+            return f"didn't catch that — {self.engine.help()}"
+        import time as _time
+        replies = []
+        for i, command_line in enumerate(commands):
+            if i:  # dwell so each step of a sequence is VISIBLE — back-to-back
+                _time.sleep(0.6)  # goal writes make the servo chase only the last
+            token, *args = command_line.split()
+            replies.append(self.engine.execute(token, args))
+        return " · ".join(replies)
 
 
 def main() -> None:

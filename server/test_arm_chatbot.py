@@ -19,6 +19,8 @@ from server.aiko_arm_chatbot import ArmChatBot
 class RecordingEngine:
     """Stands in for ArmCommandEngine — records dispatches, moves nothing."""
 
+    COMMANDS = ("ready", "home", "open", "close", "gripper", "joint", "wave")
+
     def __init__(self):
         self.calls: list[tuple[str, list[str]]] = []
         self.help_calls = 0
@@ -155,3 +157,24 @@ def test_greeter_commands_still_dispatch():
     bot.wave_on_message = True
     see(bot, "@@armbot home")
     assert bot.engine.calls == [("home", [])]
+
+
+# --- english mode (stubbed translator) --------------------------------------
+
+def test_unknown_command_routes_to_translator(monkeypatch):
+    import server.aiko_arm_chatbot as m
+    monkeypatch.setattr(m, "translate_to_commands",
+                        lambda text: ["joint wrist_roll 30", "open"])
+    bot = Bot()
+    bot._english = m.ArmChatBot._english.__get__(bot)
+    see(bot, "@@armbot do a little dance")
+    assert bot.engine.calls == [("joint", ["wrist_roll", "30"]), ("open", [])]
+
+
+def test_empty_translation_replies_help_hint(monkeypatch):
+    import server.aiko_arm_chatbot as m
+    monkeypatch.setattr(m, "translate_to_commands", lambda text: [])
+    bot = Bot()
+    bot._english = m.ArmChatBot._english.__get__(bot)
+    see(bot, "@@armbot what is the meaning of life")
+    assert bot.engine.calls == [] and bot.engine.help_calls == 1
