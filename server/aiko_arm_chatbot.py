@@ -75,13 +75,19 @@ class ArmChatBot(ChatBot):
     :meth:`process_message`.
     """
 
-    def __init__(self, context, botname: str, ws_url: str, channel: str):
+    def __init__(self, context, botname: str, ws_url: str, channel: str,
+                 wave_on_message: bool = False):
         self.current_channel = channel  # read by ChatBotImpl's discovery hook
         context.call_init(self, "ChatBot", context)
         self.botname = botname
         self.engine = ArmCommandEngine(ws_url)
-        log.info("ArmChatBot %s watching #%s, arm at %s",
-                 botname, channel, ws_url)
+        # Greeter mode (meetup demo): physically wave at ANY human message in
+        # the channel, rate-limited so a busy chat doesn't queue waves forever.
+        self.wave_on_message = wave_on_message
+        self._wave_cooldown_s = 8.0
+        self._last_greet = 0.0
+        log.info("ArmChatBot %s watching #%s, arm at %s (greeter=%s)",
+                 botname, channel, ws_url, wave_on_message)
 
     def process_message(self, payload_in, **kwargs):
         fields = _decode_message(payload_in)
@@ -104,7 +110,16 @@ class ArmChatBot(ChatBot):
         # different (or mistyped) robot, not a prefix of us.
         tokens = text.split()
         if not tokens or tokens[0].lower() != self.botname.lower():
-            return  # ordinary chat, not addressed to the arm
+            # Ordinary chat. In greeter mode, wave hello (cooldown-limited) —
+            # physical motion only, no chat reply (a reply per message is spam).
+            if self.wave_on_message and tokens:
+                import time as _time
+                now = _time.monotonic()
+                if now - self._last_greet >= self._wave_cooldown_s:
+                    self._last_greet = now
+                    self.print(f"greeting {username or '?'} 👋")
+                    self.engine.execute("wave", [])
+            return
         rest = " ".join(tokens[1:])
         if not rest:
             reply = self.engine.help()
@@ -129,6 +144,9 @@ def main() -> None:
         i = args.index("--channel")
         channel = args[i + 1]
         del args[i:i + 2]
+    wave_on_message = "--wave-on-message" in args
+    if wave_on_message:
+        args.remove("--wave-on-message")
     botname = args[0] if args else DEFAULT_BOTNAME
     # The robot sigil is exactly two '@' (bridge grammar): normalize whatever
     # was typed ('armbot', '@armbot') so the matcher never accepts single-@.
@@ -140,6 +158,7 @@ def main() -> None:
     init_args["botname"] = botname
     init_args["ws_url"] = url
     init_args["channel"] = channel
+    init_args["wave_on_message"] = wave_on_message
     aiko.compose_instance(ArmChatBot, init_args)
     log.info("Arm chat bot %r up — mention it in #%s", botname, channel)
     aiko.process.run()

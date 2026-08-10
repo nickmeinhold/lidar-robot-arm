@@ -37,6 +37,9 @@ class Bot:
 
     botname = "@@armbot"
     chat_server = None
+    wave_on_message = False
+    _wave_cooldown_s = 8.0
+    _last_greet = 0.0
     current_channel = "general"
     print = staticmethod(lambda *_: None)
 
@@ -121,3 +124,34 @@ def test_unrelated_chat_is_ignored():
     bot = Bot()
     see(bot, "the arm bot is fun")
     assert bot.engine.calls == []
+
+
+# --- greeter mode (meetup demo) ---------------------------------------------
+
+def test_greeter_waves_on_ordinary_chat():
+    bot = Bot()
+    bot.wave_on_message = True
+    see(bot, "hello everyone!")
+    assert bot.engine.calls == [("wave", [])]
+
+
+def test_greeter_cooldown_limits_wave_rate():
+    bot = Bot()
+    bot.wave_on_message = True
+    see(bot, "first")
+    see(bot, "second, right after")
+    assert bot.engine.calls == [("wave", [])]  # second greet suppressed
+
+
+def test_greeter_never_waves_at_own_reply():
+    bot = Bot()
+    bot.wave_on_message = True
+    see(bot, "👋", username="@@armbot")
+    assert bot.engine.calls == []
+
+
+def test_greeter_commands_still_dispatch():
+    bot = Bot()
+    bot.wave_on_message = True
+    see(bot, "@@armbot home")
+    assert bot.engine.calls == [("home", [])]
