@@ -26,6 +26,8 @@ from .protocol import ArmAngles, TrackingStatus
 log = logging.getLogger(__name__)
 
 # STS3215 register addresses
+ADDR_MIN_ANGLE_LIMIT = 0x09  # EEPROM — the servo's own absolute lower bound
+ADDR_MAX_ANGLE_LIMIT = 0x0B  # EEPROM — the servo's own absolute upper bound
 ADDR_TORQUE_ENABLE = 0x28
 ADDR_GOAL_ACC = 0x29
 ADDR_GOAL_POSITION = 0x2A
@@ -43,6 +45,35 @@ SOFT_LIMIT_OVERRIDES: dict[str, int] = {
 }
 TICKS_PER_REV = 4096
 TICKS_PER_RAD = TICKS_PER_REV / (2 * math.pi)
+
+
+def intersect_safe_window(
+    home: int,
+    soft_limit: int,
+    eeprom_min: int | None,
+    eeprom_max: int | None,
+) -> tuple[int, int]:
+    """Intersect the relative soft box with the servo's own EEPROM window.
+
+    The soft box (±soft_limit ticks around the startup *home*) is RELATIVE —
+    restart the server with the arm in a strange pose and the box moves with
+    it. The EEPROM Min/Max Angle Limit registers are ABSOLUTE, live in the
+    servo itself, and survive restarts, so they anchor the final window in
+    reality. A missing/garbage EEPROM reading (comm failure, or a degenerate
+    window that doesn't even contain home) falls back to the soft box alone —
+    fail toward the behavior we've always had, never toward a wider range.
+    """
+    lo = max(0, home - soft_limit)
+    hi = min(TICKS_PER_REV - 1, home + soft_limit)
+    if (
+        eeprom_min is not None
+        and eeprom_max is not None
+        and eeprom_min < eeprom_max
+        and eeprom_min <= home <= eeprom_max
+    ):
+        lo = max(lo, eeprom_min)
+        hi = min(hi, eeprom_max)
+    return lo, hi
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +137,9 @@ class FeetechArmController(ArmController):
         self._last_write: float = 0.0
         self._last_debug: float = 0.0
         self._reference: ArmAngles | None = None  # locked on first body:OK frame
+        # Gripper's absolute EEPROM window, read at connect (None = unknown,
+        # fall back to the hardcoded closed/open ticks alone).
+        self._gripper_window: tuple[int, int] | None = None
 
     # --- lifecycle -----------------------------------------------------
 
@@ -130,24 +164,50 @@ class FeetechArmController(ArmController):
 
         # Read live home positions and rewrite each joint's center so
         # iPhone "zero angle" maps to "stay where you are now" instead of
-        # snapping to a hardcoded tick. Also clamp soft limits around home.
+        # snapping to a hardcoded tick. The commanded window is the soft box
+        # around home INTERSECTED with the servo's own EEPROM angle limits —
+        # the EEPROM window is absolute and survives restarts, so a server
+        # that wakes with the arm in a strange pose can't slide its "safe"
+        # box into territory the hardware calibration forbids.
         for name, cfg in list(self._joints.items()):
             if cfg.servo_id not in present:
                 continue
             pos, comm, _ = packet.read2ByteTxRx(port, cfg.servo_id, ADDR_PRESENT_POSITION)
             if comm != COMM_SUCCESS:
                 continue
+            emin, comm_min, _ = packet.read2ByteTxRx(port, cfg.servo_id, ADDR_MIN_ANGLE_LIMIT)
+            emax, comm_max, _ = packet.read2ByteTxRx(port, cfg.servo_id, ADDR_MAX_ANGLE_LIMIT)
+            eeprom_min = emin if comm_min == COMM_SUCCESS else None
+            eeprom_max = emax if comm_max == COMM_SUCCESS else None
             limit = SOFT_LIMIT_OVERRIDES.get(name, SOFT_LIMIT_TICKS)
+            lo, hi = intersect_safe_window(pos, limit, eeprom_min, eeprom_max)
             self._joints[name] = JointConfig(
                 servo_id=cfg.servo_id,
                 center_tick=pos,
                 direction=cfg.direction,
-                min_tick=max(0, pos - limit),
-                max_tick=min(TICKS_PER_REV - 1, pos + limit),
+                min_tick=lo,
+                max_tick=hi,
             )
-            log.info("ID %d (%s): home=%d, soft-limits=[%d,%d]",
-                     cfg.servo_id, name, pos,
-                     self._joints[name].min_tick, self._joints[name].max_tick)
+            log.info("ID %d (%s): home=%d, eeprom=[%s,%s], window=[%d,%d]",
+                     cfg.servo_id, name, pos, eeprom_min, eeprom_max, lo, hi)
+
+        if GRIPPER_SERVO_ID in present:
+            emin, comm_min, _ = packet.read2ByteTxRx(port, GRIPPER_SERVO_ID, ADDR_MIN_ANGLE_LIMIT)
+            emax, comm_max, _ = packet.read2ByteTxRx(port, GRIPPER_SERVO_ID, ADDR_MAX_ANGLE_LIMIT)
+            if comm_min == COMM_SUCCESS and comm_max == COMM_SUCCESS:
+                if emax - emin >= 100:
+                    self._gripper_window = (emin, emax)
+                    log.info("ID %d (gripper): eeprom=[%d,%d]", GRIPPER_SERVO_ID, emin, emax)
+                else:
+                    # The as-shipped gripper EEPROM is a degenerate ~1-tick lock
+                    # ([2046,2047] observed live 2026-08-10) that the servo has
+                    # NOT been enforcing on goal writes — adopting it verbatim
+                    # would freeze the gripper in software. Ignore it and flag
+                    # for a proper EEPROM calibration pass.
+                    log.warning(
+                        "ID %d (gripper): EEPROM window [%d,%d] is degenerate — "
+                        "ignoring; gripper EEPROM needs calibration",
+                        GRIPPER_SERVO_ID, emin, emax)
 
         # Enable torque on responders, set speed/acc limits
         for sid in present:
@@ -300,6 +360,8 @@ class FeetechArmController(ArmController):
         if drive_gripper and GRIPPER_SERVO_ID in self._present_ids:
             g = max(0.0, min(1.0, angles.gripper))
             tick = int(GRIPPER_CLOSED_TICK + g * (GRIPPER_OPEN_TICK - GRIPPER_CLOSED_TICK))
+            if self._gripper_window is not None:
+                tick = max(self._gripper_window[0], min(self._gripper_window[1], tick))
             out.append((GRIPPER_SERVO_ID, tick))
         return out
 
