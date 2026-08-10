@@ -534,3 +534,65 @@ they conflict.
   framing, adopted).
 
 Re-cast rounds used: **2 of 3.** Round 3 is the confirming strike.
+
+## 10. Temper round 3 — final amendments and closure
+
+Panel: Maxwell + Kelvin (2.5-pro) + Carnot + Tesla. All three adversaries:
+REQUEST_CHANGES — now at the asymptote (proof-deepening on owned tradeoffs).
+Four NEW findings verified real and folded; the rest re-affirm §9.2 tradeoffs
+whose dispositions stand with their owners.
+
+### 10.1 Final amendments (normative)
+
+1. **`release` requires hands-on confirmation (Kelvin FATAL — verified real):**
+   torque-off drops a raised arm under gravity. The escape flow is: prompt
+   "support the arm, then confirm" → confirmation → torque off. Same for the
+   chat `release` command. No automatic torque-off from a violating pose.
+2. **The physical stop path is SPECIFIED, not invoked (Carnot FATAL):** the
+   supervised deadman is the 7.4 V supply switch/plug — upstream of every
+   servo, independent of Mac/server/network by construction. Acceptance test
+   (step 3 bench session): measured time-to-limp from switch actuation.
+   Software torque-off is convenience, never the safety stop. Envelope
+   widening beyond today's cage requires this test recorded.
+3. **Sampling bound composes multi-joint motion (Tesla):**
+   sweep ≤ Σⱼ |Δθⱼ| · leverⱼ (per-joint levers from the artifact), not
+   max-single-joint. Formula lands in the gate; fixture covers a worst-case
+   multi-joint step.
+4. **wrist_roll wraps on its LIMITED interval (Tesla):** shortest-path
+   interpolation must not cross the forbidden arc outside [lower, upper];
+   when the short way is forbidden, take the long way or reject with
+   `WRAP_SEAM`.
+5. **Primitive-compiler soundness is a falsifier (Carnot):** every primitive
+   expansion passes the same admission gate as raw sequences (already the
+   dataflow; now claimed + fixture-pinned across parameter domains).
+6. **Gate off-switches are authorization, not audit (Carnot):** `--no-gate` /
+   legacy / clamp-enable are host-console-only (never wire-reachable),
+   persist visibly in every status frame, and require the server to start in
+   that state (no live downgrade).
+7. **Calibration residual kill criterion (Carnot):** commissioning residuals
+   have thresholds: pass (< margin-budget allocation) / retry calibration /
+   REFUSE gating (spine demoted to visualization until re-calibrated).
+8. **Table plane carries its own metrology note (Tesla):** measured in
+   `urdf_calib_frame` during the calibration session (tool-tip touch at 3
+   points), invalidated whenever the base moves (operator attests base is
+   fixed; falsifier: touch-test re-run drifts < margin).
+
+### 10.2 Closure statement (the honest stamp)
+
+- Rounds used: 3 of 3. Every round-3 finding is dispositioned: 8 folded
+  (above), the remainder re-affirmations of §9.2 named tradeoffs (owners
+  unchanged) — no finding dissolves the architecture, and no disposition was
+  shown wrong.
+- **Process verdict: the adversaries stand at REQUEST_CHANGES.** Their
+  residual demands are proof-artifacts that can only exist AFTER building
+  (measured margins, shadow evidence, physical stop test) — the design now
+  *schedules* those proofs rather than claiming them. The honest claim is:
+  **I believe this is buildable and the build order carries the burden of
+  proof; the process does not certify it "clean-approved."** Nick's taste
+  owns go/no-go — which is exactly where /crucible ends.
+- **Scope stamp: this verdict covers the DESIGN ONLY.** Implementation is
+  unproven by construction; every build step that touches the drive path or
+  safety surfaces gets its own code cage-match. A green design pass is not a
+  green code pass.
+- Wu (K3) never seated — two-round coverage gap in the fifth family's bias.
+  Re-seat Wu on the first code cage-match when quota refreshes.
