@@ -247,3 +247,35 @@ def test_help_never_advertises_locked_joints():
     text = ArmChatBot.chat_help()
     assert "shoulder_yaw" not in text and "shoulder_pitch" not in text.replace(
         "shoulder & base are locked", "")
+
+
+# --- routines stay inside the cage BY CONSTRUCTION ---------------------------
+
+def test_every_routine_step_is_inside_the_cage():
+    from server.aiko_arm_robot import ArmCommandEngine
+    caps = {"wrist_pitch": 45.0, "wrist_roll": 45.0, "elbow_pitch": 15.0}
+    for name, (_reply, steps) in ArmCommandEngine.ROUTINES.items():
+        for step in steps:
+            for key, value in step.items():
+                if key in ("dwell", "grip"):
+                    continue
+                assert key in caps, f"{name}: joint {key} is not cage-allowed"
+                assert abs(value) <= caps[key], f"{name}: {key}={value} over cap"
+
+
+def test_every_routine_ends_at_neutral():
+    from server.aiko_arm_robot import ArmCommandEngine
+    for name, (_reply, steps) in ArmCommandEngine.ROUTINES.items():
+        final = {}
+        for step in steps:
+            for key, value in step.items():
+                if key not in ("dwell", "grip"):
+                    final[key] = value
+        assert all(v == 0 for v in final.values()), f"{name} ends off-neutral: {final}"
+
+
+def test_routines_are_no_arg_commands():
+    from server.aiko_arm_robot import ArmCommandEngine
+    for name in ArmCommandEngine.ROUTINES:
+        assert name in ArmCommandEngine.COMMANDS
+        assert name in ArmCommandEngine._NO_ARG_COMMANDS

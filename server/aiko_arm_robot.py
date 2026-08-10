@@ -147,7 +147,49 @@ class ArmCommandEngine:
     string to surface back to the human; hardware failures come back as a
     ⚠️ string rather than raising, so callers can always just relay."""
 
-    COMMANDS = ("ready", "home", "open", "close", "gripper", "joint", "wave")
+    COMMANDS = ("ready", "home", "open", "close", "gripper", "joint", "wave",
+                "dance", "nod", "shake", "bow", "wiggle")
+
+    # Named routines — small choreographed sequences. Every step stays inside
+    # the demo cage (wrists ±45°, elbow ±15°) BY CONSTRUCTION, so routines are
+    # crowd-safe without passing through the sanitizer; a fixture pins that
+    # invariant. Steps: joint name → absolute degrees (relative-to-startup
+    # space), optional "grip" 0..1, "dwell" seconds before the next step.
+    # Every routine ends at neutral so poses don't accumulate.
+    ROUTINES: dict[str, tuple[str, list[dict]]] = {
+        "dance": ("💃", [
+            {"wrist_roll": 35, "elbow_pitch": -10, "dwell": 0.35},
+            {"wrist_roll": -35, "wrist_pitch": 20, "dwell": 0.35},
+            {"wrist_roll": 35, "wrist_pitch": 0, "grip": 1.0, "dwell": 0.35},
+            {"wrist_roll": -35, "elbow_pitch": 0, "grip": 0.0, "dwell": 0.35},
+            {"wrist_roll": 0, "wrist_pitch": 30, "elbow_pitch": -12,
+             "grip": 0.8, "dwell": 0.45},
+            {"wrist_pitch": 0, "elbow_pitch": 0, "grip": 0.5, "dwell": 0.4},
+        ]),
+        "nod": ("🙂 yes", [
+            {"wrist_pitch": 30, "dwell": 0.4},
+            {"wrist_pitch": 5, "dwell": 0.35},
+            {"wrist_pitch": 30, "dwell": 0.4},
+            {"wrist_pitch": 0, "dwell": 0.3},
+        ]),
+        "shake": ("🙅 no", [
+            {"wrist_roll": 35, "dwell": 0.35},
+            {"wrist_roll": -35, "dwell": 0.35},
+            {"wrist_roll": 35, "dwell": 0.35},
+            {"wrist_roll": 0, "dwell": 0.3},
+        ]),
+        "bow": ("🙇", [
+            {"wrist_pitch": 40, "elbow_pitch": -15, "dwell": 1.0},
+            {"wrist_pitch": 0, "elbow_pitch": 0, "dwell": 0.5},
+        ]),
+        "wiggle": ("〰️", [
+            {"wrist_roll": 20, "dwell": 0.22},
+            {"wrist_roll": -20, "dwell": 0.22},
+            {"wrist_roll": 20, "dwell": 0.22},
+            {"wrist_roll": -20, "dwell": 0.22},
+            {"wrist_roll": 0, "dwell": 0.2},
+        ]),
+    }
 
     def __init__(self, url: str) -> None:
         self._link = _ArmLink(url)
@@ -162,7 +204,8 @@ class ArmCommandEngine:
 
     # Commands that take no arguments — trailing decorations are tolerated
     # ("wave 👋 from angie" waves; observed live from the island, 2026-08-03).
-    _NO_ARG_COMMANDS = ("ready", "home", "open", "close", "wave")
+    _NO_ARG_COMMANDS = ("ready", "home", "open", "close", "wave",
+                        "dance", "nod", "shake", "bow", "wiggle")
 
     def execute(self, command: str, args: list[str]) -> str:
         """Dispatch a named command with string args (chat / RPC boundary —
@@ -270,6 +313,35 @@ class ArmCommandEngine:
         finally:
             self._pose["wrist_roll"] = saved_roll
         return "👋"
+
+    # --- routines ---------------------------------------------------------
+
+    def _routine(self, name: str) -> str:
+        reply, steps = self.ROUTINES[name]
+        for step in steps:
+            for joint, degrees in step.items():
+                if joint in JOINT_NAMES:
+                    self._pose[joint] = math.radians(degrees)
+            if "grip" in step:
+                self._grip = step["grip"]
+            self._drive()
+            time.sleep(step.get("dwell", 0.35))
+        return reply
+
+    def dance(self) -> str:
+        return self._routine("dance")
+
+    def nod(self) -> str:
+        return self._routine("nod")
+
+    def shake(self) -> str:
+        return self._routine("shake")
+
+    def bow(self) -> str:
+        return self._routine("bow")
+
+    def wiggle(self) -> str:
+        return self._routine("wiggle")
 
 
 class SO100Arm(Actor):
