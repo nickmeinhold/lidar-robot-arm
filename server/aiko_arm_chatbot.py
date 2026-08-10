@@ -58,12 +58,29 @@ _OAUTH_TOKEN = (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
                 or os.environ.get("ANTHROPIC_OAUTH_TOKEN") or "")
 _TRANSLATE_SYSTEM = (
     "You translate chat messages into robot arm commands. Vocabulary: ready, "
-    "home, open, close, wave, 'gripper <0-100>', 'joint <shoulder_yaw|"
-    "shoulder_pitch|elbow_pitch|wrist_pitch|wrist_roll> <degrees -50..50>'. "
+    "home, open, close, wave, 'gripper <0-100>', 'joint <wrist_pitch|"
+    "wrist_roll> <degrees -45..45>'. "
     "Reply ONLY a compact JSON array of at most 6 command strings, no code "
     "fences, no prose. Sequences are allowed (a wiggle = several joint moves). "
     "If the message is not an arm request, reply []"
 )
+
+# Demo-night cage (2026-08-10, Nick's call): the English translator may only
+# drive WRIST joints — shoulder/elbow are excluded until the configuration-
+# space collision work (tasks #3/#6) lands. Typed '@@armbot joint elbow …'
+# commands still work; this belt-and-braces filter also DROPS any translated
+# command that names an excluded joint, so prompt drift can't sneak one through.
+_ENGLISH_JOINT_ALLOWLIST = ("wrist_pitch", "wrist_roll")
+
+
+def _english_safe(command_line: str) -> bool:
+    tokens = command_line.split()
+    if not tokens or tokens[0].lower() != "joint":
+        return True  # named poses / gripper / wave — always allowed
+    name = "_".join(t.lower() for t in tokens[1:-1])
+    from .aiko_arm_robot import ArmCommandEngine
+    name = ArmCommandEngine.JOINT_ALIASES.get(name, name)
+    return name in _ENGLISH_JOINT_ALLOWLIST
 
 
 def translate_to_commands(text: str) -> list[str]:
@@ -182,7 +199,7 @@ class ArmChatBot(ChatBot):
 
     def _english(self, text: str) -> str:
         """Translate free text into a command sequence and run it."""
-        commands = translate_to_commands(text)
+        commands = [c for c in translate_to_commands(text) if _english_safe(c)]
         if not commands:
             return f"didn't catch that — {self.engine.help()}"
         import time as _time
