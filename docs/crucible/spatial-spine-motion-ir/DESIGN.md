@@ -420,3 +420,117 @@ round; the two research-citation attacks were CONFIRMED against the file):
 
 Re-cast rounds used: **1 of 3.** Next: re-strike (round 2) on the re-cast
 design — the recast is substantial, so it has NOT survived a clean strike yet.
+
+## 9. Temper round 2 — amendments (normative) and ledger
+
+Panel: Maxwell + Carnot + Tesla (Kelvin dark this round — Gemini 429 capacity;
+Wu still quota-dark). Gate satisfied. Both seated adversaries:
+REQUEST_CHANGES. Character shift: no findings dissolve the architecture; all
+are proof-deepening or scope-honesty. Verified dispositions below; the
+AMENDMENTS in this section are normative and override earlier sections where
+they conflict.
+
+### 9.1 Amendments folded into the design
+
+1. **Table half-space in the gate (from the environment FATALs).** The gate
+   gains a static workspace model v0: a table plane (half-space) at a
+   measured height + optional keep-out boxes, checked in the same pass as
+   self-collision spheres. Near-zero cost, kills the single most likely
+   real-world strike. This does NOT change §6's public-cage stance — it
+   shrinks supervised residual risk; it is not an environment model.
+2. **The 10 Hz feedback monitor is a DAMAGE-LIMITER, not a safety invariant.**
+   Worst-case detection-to-stop travel at rated speed over a 100 ms window is
+   tens of degrees; no margin term may credit the monitor. The invariants are
+   admission-time checking of commanded paths + the margin budget; the
+   monitor exists to shorten bad outcomes and feed shadow-mode data.
+3. **Calibration transaction: per-joint readback-verify + commit bitmap.**
+   Every EEPROM write is read back and compared before the stage advances; the
+   intent log carries a per-joint commit bitmap; startup's single predicate is
+   "every joint's hardware state matches the intent image" — stage flags alone
+   are insufficient (mid-packet bus death).
+4. **Legacy relative mode is a time-boxed migration tool, not a peer mode.**
+   Mixed-space sessions are refused (one space per server run); the gate and
+   the LLM path REQUIRE absolute mode; legacy exists only to keep the iPhone
+   demo alive pre-calibration and is scheduled for deletion after step 4.
+5. **Public channels get primitives/routines ONLY** — `raw_steps` is
+   supervised-mode-only, enforced server-side by channel policy, not prompt.
+6. **Sequence velocity certificates expire on interference:** a sequence that
+   enters SOFT or is preempted ABORTS (hold + reason); no partial resume, no
+   re-scaled continuation in v1. Admission's velocity proof is only valid for
+   the uninterfered playback it certified.
+7. **Guided-home demoted:** default escape is `release`. Guided-home runs only
+   with monotone improvement across ALL pairs (min-distance up, max
+   penetration down) and hard-stops to `release` advice after N steps.
+8. **Derived constants derive from artifacts, not prose:** lever-arm bound,
+   sampling step, and margin terms are computed at load from the current
+   sphere set + baked URDF, so regenerating geometry re-derives the bounds
+   automatically. RESEARCH's numbers are evidence, not law.
+9. **Commissioning produces NUMBERS, not vibes:** the multi-pose suite
+   records physical tool-height/reach measurements (tape/fixture) at ≥2
+   poses; the residuals become the calibration-error term in the margin
+   budget. The browser overlay remains the workflow instrument; the physical
+   measurements are the oracle (breaks the circularity Carnot named).
+10. **Shadow-mode false-negative instrument is independent of the sphere
+    model:** held-out mesh-oracle checks on logged poses (offline, slow,
+    exact) + any physical contact events. A verifier sharing the verified
+    representation is blind at the shared layer (Tesla) — the mesh oracle is
+    the second eye.
+11. **Step-2 acceptance includes an adversarial pose corpus:** joint-limit
+    extremes, gripper open/closed, wrap seams, folded configurations, every
+    ACM-ignored pair exercised near contact. Ignored pairs each carry a
+    deterministic geometric justification; the sampler is a check, not the
+    certificate.
+12. **Envelope-wideners are audit events:** `--no-gate`, legacy mode, clamp
+    opt-in, skill promotion, gate-config changes all log loudly AND announce
+    on the wire (viewer + chat see "gate disabled"). The gate being the
+    security boundary makes its off-switches part of the attack surface.
+13. **Spine/IR ship-split:** the gate API (validate(sequence|pose) → verdict
+    + reason codes) is the frozen interface; Spine v1 (steps 0–4) and IR v2
+    (step 5) ship on their own criteria against it. If the spine slips, the
+    IR does NOT ship on clamp-and-hope — it waits; the demo keeps routines.
+
+### 9.2 Named tradeoffs (owner + cost + rationale)
+
+- **Supervised full-range = operational deadman** — owner: Nick. "Supervised"
+  means physical kill authority in hand (power/torque switch), not presence.
+  Cost: demo ergonomics. Rationale: self-collision gate ≠ environment safety;
+  residual tool-vs-world risk is accepted only under deadman conditions.
+- **Convention-absolute frame feeds a safety gate** — owner: design (Maxwell).
+  Accepted because self-collision needs self-consistency, with homing error
+  entering the margin budget as a MEASURED term (amendment 9). Cost: margins
+  carry the residual; AR/dataset claims stay embargoed. The metrology-grade
+  chain remains future work.
+- **CAD-proxy geometry ("measured sound" ≠ as-built)** — owner: Nick at
+  shadow-exit review. Spheres model the CAD meshes, not screws/cables/bow.
+  Cost: periodic physical validation; mitigation: conservative radii + margin
+  + amendment 10's mesh oracle.
+- **Host-local calibration threat model** — owner: Nick. The CLI defends
+  against chat/network paths, not a compromised host. Accepted for a hobby
+  bench; §6 wording softened from "by construction" to "by mechanism, against
+  the network surface."
+- **CI oracle must block kinematics merges** — owner: pipeline. A skipped
+  placo/pin oracle on a flaky runner silently un-anchors FK; red oracle = no
+  merge of kinematics changes.
+- **Beats/tempo retained** — owner: IR author. Velocity re-validated against
+  measured servo response before admission; certificates expire per
+  amendment 6.
+- **Wu-family blind spot** — owner: next strike chair. Two rounds ran without
+  K3's bias; injection/chat and hardware-transaction findings got only
+  Carnot/Tesla coverage. Re-seat Wu when quota refreshes if a further strike
+  runs.
+
+### 9.3 Rejected-as-rehash (with reasons)
+
+- "Convention-absolute is FATAL" — round-1 finding #14 already folded; round
+  2's residue is the measured-residual requirement (amendment 9) + the named
+  tradeoff. The claim "gate certifies a simulation" is true at the layer the
+  design now states honestly; dissolving the gate on those grounds would
+  reject the entire class of model-based safety, which the evidence (margins
+  + budgets + oracle) does not require.
+- "Runtime FK library instead of 40 lines" — the CI-oracle + conformance
+  fixtures + load-time sanity checks give the correctness guarantees a
+  library import would, without the 15-package runtime; classified as
+  performance-plus-ownership choice behind tests (Carnot's own alternative
+  framing, adopted).
+
+Re-cast rounds used: **2 of 3.** Round 3 is the confirming strike.
