@@ -49,6 +49,8 @@ class Bot:
     _last_greet = 0.0
     current_channel = "general"
     BUSY_REPLY = ArmChatBot.BUSY_REPLY
+    LOCKED_REPLY = ArmChatBot.LOCKED_REPLY
+    chat_help = staticmethod(ArmChatBot.chat_help)
     print = staticmethod(lambda *_: None)
 
     def __init__(self):
@@ -121,13 +123,13 @@ def test_capitalized_mention_and_command_dispatch():
 def test_args_pass_through():
     bot = Bot()
     see(bot, "@@armbot joint wrist pitch 20")
-    assert bot.engine.calls == [("joint", ["wrist", "pitch", "20"])]
+    assert bot.engine.calls == [("joint", ["wrist_pitch", "20"])]
 
 
 def test_bare_mention_replies_help():
     bot = Bot()
     see(bot, "@@armbot")
-    assert bot.engine.help_calls == 1 and bot.engine.calls == []
+    assert bot.engine.calls == [] and bot.replies == [ArmChatBot.chat_help()]
 
 
 def test_own_echo_is_skipped():
@@ -191,7 +193,8 @@ def test_empty_translation_replies_help_hint(monkeypatch):
     bot = Bot()
     bot._english = m.ArmChatBot._english.__get__(bot)
     see(bot, "@@armbot what is the meaning of life")
-    assert bot.engine.calls == [] and bot.engine.help_calls == 1
+    assert bot.engine.calls == []
+    assert bot.replies and "didn't catch that" in bot.replies[0]
 
 
 # --- busy backpressure -------------------------------------------------------
@@ -210,3 +213,37 @@ def test_greeter_skips_silently_when_queue_full():
     bot._submit = lambda job: False
     see(bot, "hello robot!")
     assert bot.engine.calls == [] and bot.replies == []
+
+
+# --- crowd-observed UX (2026-08-10 meetup log) -------------------------------
+
+def test_bare_joint_syntax_skips_llm():
+    bot = Bot()
+    see(bot, "@@armbot wrist_pitch 45")
+    assert bot.engine.calls == [("joint", ["wrist_pitch", "45"])]
+
+
+def test_bare_joint_alias_works():
+    bot = Bot()
+    see(bot, "@@armbot wrist 30")
+    assert bot.engine.calls == [("joint", ["wrist_pitch", "30"])]
+
+
+def test_locked_joint_gets_honest_reply():
+    bot = Bot()
+    see(bot, "@@armbot shoulder_pitch 100")
+    assert bot.engine.calls == []
+    assert bot.replies == [ArmChatBot.LOCKED_REPLY]
+
+
+def test_typed_joint_shoulder_also_locked():
+    bot = Bot()
+    see(bot, "@@armbot joint shoulder_yaw -15")
+    assert bot.engine.calls == []
+    assert bot.replies == [ArmChatBot.LOCKED_REPLY]
+
+
+def test_help_never_advertises_locked_joints():
+    text = ArmChatBot.chat_help()
+    assert "shoulder_yaw" not in text and "shoulder_pitch" not in text.replace(
+        "shoulder & base are locked", "")

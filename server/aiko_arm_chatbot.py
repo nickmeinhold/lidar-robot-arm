@@ -46,7 +46,7 @@ from aiko_chat.bot import ChatBot, _ACTOR_BOT, _PROTOCOL_BOT
 from aiko_chat.protocol import _decode_message
 from aiko_services.main.utilities import get_logger
 
-from .aiko_arm_robot import ArmCommandEngine, DEFAULT_URL
+from .aiko_arm_robot import ArmCommandEngine, DEFAULT_URL, JOINT_NAMES
 
 log = get_logger(__name__)
 
@@ -162,6 +162,19 @@ class ArmChatBot(ChatBot):
     # people resend, which only deepens the queue (backlog spiral).
     BUSY_DEPTH = 2
     BUSY_REPLY = "🙋 busy — try again in a moment"
+    # When the safety cage eats a understood-but-forbidden joint, say SO —
+    # "didn't catch that" for a perfectly-understood shoulder command reads as
+    # flaky, and the crowd concluded exactly that ("works occasionally").
+    LOCKED_REPLY = ("🔒 shoulder & base are locked tonight (collision safety). "
+                    "I can do: wrists ±45°, elbow ±15°, gripper 0-100, "
+                    "ready / home / wave")
+
+    @staticmethod
+    def chat_help() -> str:
+        """Tonight's ACTUAL envelope — never advertise a locked joint."""
+        return ("try: wave · ready · home · open · close · gripper 0-100 · "
+                "wrist_pitch/wrist_roll ±45° · elbow ±15° — or just say it in "
+                "English! (shoulder & base are locked tonight)")
 
     def __init__(self, context, botname: str, ws_url: str, channel: str,
                  wave_on_message: bool = False):
@@ -235,11 +248,27 @@ class ArmChatBot(ChatBot):
 
         def job(rest=rest, username=username):
             if not rest:
-                reply = self.engine.help()
+                reply = self.chat_help()
             else:
                 command, *args = rest.split()
-                if command.lower() in self.engine.COMMANDS or \
-                        command.lower() in ("help", "?"):
+                lowered = command.lower()
+                alias = ArmCommandEngine.JOINT_ALIASES.get(lowered, lowered)
+                if lowered in ("help", "?"):
+                    reply = self.chat_help()
+                elif lowered == "joint" or (alias in JOINT_NAMES and args):
+                    # Deterministic joint path — people type 'wrist_pitch 45'
+                    # bare, no 'joint' prefix; don't detour that through the
+                    # LLM. ALL chat joint commands pass the cage sanitizer
+                    # (the crowd types precise syntax too — the cage can't be
+                    # English-only), and a caged joint gets an honest 🔒.
+                    line = rest if lowered == "joint" else f"joint {rest}"
+                    sanitized = _english_sanitize(line)
+                    if sanitized is None:
+                        reply = self.LOCKED_REPLY
+                    else:
+                        reply = self.engine.execute(
+                            "joint", sanitized.split()[1:])
+                elif lowered in self.engine.COMMANDS:
                     reply = self.engine.execute(command, args)  # deterministic
                 else:
                     reply = self._english(rest)  # free text → translated sequence
@@ -257,10 +286,13 @@ class ArmChatBot(ChatBot):
 
     def _english(self, text: str) -> str:
         """Translate free text into a command sequence and run it."""
-        commands = [s for c in translate_to_commands(text)
-                    if (s := _english_sanitize(c)) is not None]
+        raw = translate_to_commands(text)
+        if not raw:
+            return f"didn't catch that — {self.chat_help()}"
+        commands = [s for c in raw if (s := _english_sanitize(c)) is not None]
         if not commands:
-            return f"didn't catch that — {self.engine.help()}"
+            # Understood fine — the cage ate it. Say so, don't play dumb.
+            return self.LOCKED_REPLY
         import time as _time
         replies = []
         for i, command_line in enumerate(commands):
