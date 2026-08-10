@@ -61,10 +61,10 @@ _OAUTH_TOKEN = (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
                 or os.environ.get("ANTHROPIC_OAUTH_TOKEN") or "")
 _TRANSLATE_SYSTEM = (
     "You translate chat messages into robot arm commands. Vocabulary: ready, "
-    "home, open, close, wave, dance, nod, shake, bow, wiggle, "
+    "home, open, close, wave, dance, nod, shake, bow, wiggle, headbang, "
     "'gripper <0-100>', 'joint <wrist_pitch|"
     "wrist_roll> <degrees -45..45>', 'joint elbow_pitch <degrees -15..15>'. "
-    "Prefer the named routines (dance/nod/shake/bow/wiggle) when they fit — "
+    "Prefer the named routines (dance/nod/shake/bow/wiggle/headbang) when they fit — "
     "they are choreographed. "
     "Reply ONLY a compact JSON array of at most 6 command strings, no code "
     "fences, no prose. Sequences are allowed. "
@@ -175,7 +175,7 @@ class ArmChatBot(ChatBot):
     @staticmethod
     def chat_help() -> str:
         """Tonight's ACTUAL envelope — never advertise a locked joint."""
-        return ("try: dance · nod · shake · bow · wiggle · wave · ready · home "
+        return ("try: dance · headbang · nod · shake · bow · wiggle · wave · ready · home "
                 "· open · close · gripper 0-100 · wrist_pitch/wrist_roll ±45° "
                 "· elbow ±15° — or just say it in English! (shoulder & base "
                 "are locked tonight)")

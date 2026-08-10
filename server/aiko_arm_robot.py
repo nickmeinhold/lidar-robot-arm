@@ -148,7 +148,7 @@ class ArmCommandEngine:
     ⚠️ string rather than raising, so callers can always just relay."""
 
     COMMANDS = ("ready", "home", "open", "close", "gripper", "joint", "wave",
-                "dance", "nod", "shake", "bow", "wiggle")
+                "dance", "nod", "shake", "bow", "wiggle", "headbang")
 
     # Named routines — small choreographed sequences. Every step stays inside
     # the demo cage (wrists ±45°, elbow ±15°) BY CONSTRUCTION, so routines are
@@ -182,6 +182,14 @@ class ArmCommandEngine:
             {"wrist_pitch": 40, "elbow_pitch": -15, "dwell": 1.0},
             {"wrist_pitch": 0, "elbow_pitch": 0, "dwell": 0.5},
         ]),
+        "headbang": ("🤘", [
+            {"wrist_pitch": 45, "elbow_pitch": -8, "dwell": 0.28},
+            {"wrist_pitch": 5, "dwell": 0.25},
+            {"wrist_pitch": 45, "dwell": 0.28},
+            {"wrist_pitch": 5, "dwell": 0.25},
+            {"wrist_pitch": 45, "dwell": 0.28},
+            {"wrist_pitch": 0, "elbow_pitch": 0, "dwell": 0.3},
+        ]),
         "wiggle": ("〰️", [
             {"wrist_roll": 20, "dwell": 0.22},
             {"wrist_roll": -20, "dwell": 0.22},
@@ -205,7 +213,7 @@ class ArmCommandEngine:
     # Commands that take no arguments — trailing decorations are tolerated
     # ("wave 👋 from angie" waves; observed live from the island, 2026-08-03).
     _NO_ARG_COMMANDS = ("ready", "home", "open", "close", "wave",
-                        "dance", "nod", "shake", "bow", "wiggle")
+                        "dance", "nod", "shake", "bow", "wiggle", "headbang")
 
     def execute(self, command: str, args: list[str]) -> str:
         """Dispatch a named command with string args (chat / RPC boundary —
@@ -342,6 +350,9 @@ class ArmCommandEngine:
 
     def wiggle(self) -> str:
         return self._routine("wiggle")
+
+    def headbang(self) -> str:
+        return self._routine("headbang")
 
 
 class SO100Arm(Actor):
