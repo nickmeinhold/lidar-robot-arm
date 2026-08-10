@@ -62,28 +62,45 @@ _OAUTH_TOKEN = (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
 _TRANSLATE_SYSTEM = (
     "You translate chat messages into robot arm commands. Vocabulary: ready, "
     "home, open, close, wave, 'gripper <0-100>', 'joint <wrist_pitch|"
-    "wrist_roll> <degrees -45..45>'. "
+    "wrist_roll> <degrees -45..45>', 'joint elbow_pitch <degrees -15..15>'. "
     "Reply ONLY a compact JSON array of at most 6 command strings, no code "
     "fences, no prose. Sequences are allowed (a wiggle = several joint moves). "
     "If the message is not an arm request, reply []"
 )
 
-# Demo-night cage (2026-08-10, Nick's call): the English translator may only
-# drive WRIST joints — shoulder/elbow are excluded until the configuration-
-# space collision work (tasks #3/#6) lands. Typed '@@armbot joint elbow …'
-# commands still work; this belt-and-braces filter also DROPS any translated
-# command that names an excluded joint, so prompt drift can't sneak one through.
-_ENGLISH_JOINT_ALLOWLIST = ("wrist_pitch", "wrist_roll")
+# Demo-night cage (2026-08-10, Nick's call): the English translator may drive
+# wrist joints freely-ish and the elbow only at small amplitude — from near-
+# full-extension (its EEPROM window tops out 13 ticks above tonight's home) a
+# ±15° elbow move cannot reach self-contact. Shoulder stays excluded until the
+# configuration-space collision work (tasks #3/#6) lands. Typed '@@armbot
+# joint …' commands are unaffected; this belt-and-braces filter sanitizes
+# whatever the translator emits, so prompt drift can't sneak past it.
+_ENGLISH_JOINT_CAPS_DEG = {
+    "wrist_pitch": 45.0,
+    "wrist_roll": 45.0,
+    "elbow_pitch": 15.0,
+}
 
 
-def _english_safe(command_line: str) -> bool:
+def _english_sanitize(command_line: str) -> str | None:
+    """Sanitize one translated command: unknown/excluded joints are dropped
+    (None); over-cap degrees are CLAMPED, not dropped — 'bend your elbow 30°'
+    should bend 15°, not silently vanish from the sequence."""
     tokens = command_line.split()
     if not tokens or tokens[0].lower() != "joint":
-        return True  # named poses / gripper / wave — always allowed
+        return command_line  # named poses / gripper / wave — always allowed
     name = "_".join(t.lower() for t in tokens[1:-1])
     from .aiko_arm_robot import ArmCommandEngine
     name = ArmCommandEngine.JOINT_ALIASES.get(name, name)
-    return name in _ENGLISH_JOINT_ALLOWLIST
+    cap = _ENGLISH_JOINT_CAPS_DEG.get(name)
+    if cap is None:
+        return None
+    try:
+        degrees = float(tokens[-1])
+    except ValueError:
+        return None
+    degrees = max(-cap, min(cap, degrees))
+    return f"joint {name} {degrees:g}"
 
 
 def translate_to_commands(text: str) -> list[str]:
@@ -240,7 +257,8 @@ class ArmChatBot(ChatBot):
 
     def _english(self, text: str) -> str:
         """Translate free text into a command sequence and run it."""
-        commands = [c for c in translate_to_commands(text) if _english_safe(c)]
+        commands = [s for c in translate_to_commands(text)
+                    if (s := _english_sanitize(c)) is not None]
         if not commands:
             return f"didn't catch that — {self.engine.help()}"
         import time as _time
