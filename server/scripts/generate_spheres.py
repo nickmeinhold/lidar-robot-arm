@@ -33,6 +33,9 @@ from pathlib import Path
 
 import numpy as np
 
+from server.so101_kinematics import (
+    JOINT_ORDER, SO101Kinematics, _origin_matrix)
+
 MODEL_DIR = Path(__file__).parent.parent / "static" / "models" / "SO101"
 OUT_PATH = MODEL_DIR / "so101_spheres.json"
 
@@ -59,17 +62,21 @@ def read_stl(path: Path) -> np.ndarray:
     return data[:, 12:48].copy().view("<f4").reshape(n, 3, 3).astype(np.float64)
 
 
-def _origin_matrix(xyz, rpy) -> np.ndarray:
-    from server.so101_kinematics import _origin_matrix as om
-    return om(xyz, rpy)
-
-
 def load_link_meshes(model_dir: Path = MODEL_DIR) -> dict[str, np.ndarray]:
     """{link_name: (n_tris, 3, 3) triangles in LINK frame} for every link
     with visual geometry, straight from the bake (single geometry truth)."""
     bake = json.loads((model_dir / "so101_urdf.json").read_text())
     out: dict[str, np.ndarray] = {}
     for link in bake["links"]:
+        # the containment proof is over the bake's ONLY geometry channel —
+        # refuse loudly if a future bake grows a separate collision-mesh set
+        # this generator would silently ignore (cage-match r4)
+        unexpected = set(link) - {"name", "visuals"}
+        if unexpected:
+            raise RuntimeError(
+                f"bake link {link['name']} carries unexpected geometry "
+                f"channels {unexpected} — extend the generator before "
+                "trusting containment")
         tris = []
         for v in link.get("visuals", []):
             t = read_stl(model_dir / "assets" / v["mesh"])
@@ -168,8 +175,6 @@ def measure_levers(links: dict[str, list[dict]]) -> dict[str, float]:
     """Per-joint lever arm: max perpendicular distance from the joint's axis
     to any DOWNSTREAM sphere surface, over sampled poses (RESEARCH Q2's
     method, re-derived from THIS sphere set per amendment 9.1.8)."""
-    from server.so101_kinematics import JOINT_ORDER, SO101Kinematics
-
     kin = SO101Kinematics()
     rng = np.random.default_rng(LEVER_SEED)
     lo = np.array([kin.joints[n].lower for n in JOINT_ORDER])

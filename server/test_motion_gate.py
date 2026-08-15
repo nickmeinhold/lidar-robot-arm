@@ -29,6 +29,7 @@ from server.so101_kinematics import JOINT_ORDER, SO101Kinematics
 from server.motion_gate import (
     GateStatus,
     MotionGate,
+    NEAR_ADJACENT_ALLOWLIST,
     Reason,
     SPHERES_PATH,
     ACM_PATH,
@@ -122,7 +123,20 @@ def test_mesh_containment_independent_sampling(spheres):
         w = 1.0 - u - v
         interior = (tris[:, None, 0] * u + tris[:, None, 1] * v
                     + tris[:, None, 2] * w).reshape(-1, 3)
-        pts = np.concatenate([tris.reshape(-1, 3), interior])
+        # witness points (cage-match r4): centroids + acute-face
+        # circumcenters — the family where a short inflation hides
+        cent = tris.mean(axis=1)
+        a3, b3, c3 = tris[:, 0], tris[:, 1], tris[:, 2]
+        ab, ac = b3 - a3, c3 - a3
+        abn = (ab * ab).sum(1); acn = (ac * ac).sum(1)
+        d_ = 2 * (abn * acn - ((ab * ac).sum(1)) ** 2)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            s_ = (acn * (abn - (ab * ac).sum(1))) / d_
+            t_ = (abn * (acn - (ab * ac).sum(1))) / d_
+        acute = (np.isfinite(s_) & np.isfinite(t_) & (s_ >= 0) & (t_ >= 0)
+                 & (s_ + t_ <= 1))
+        circ = a3[acute] + ab[acute] * s_[acute, None] + ac[acute] * t_[acute, None]
+        pts = np.concatenate([tris.reshape(-1, 3), interior, cent, circ])
         d = np.linalg.norm(pts[:, None, :] - centers[None, :, :], axis=2)
         inside = (d <= radii[None, :] + 1e-9).any(axis=1)
         assert inside.all(), (
@@ -151,10 +165,13 @@ def test_acm_exclusions_have_reasons(acm):
         }, "only STRUCTURAL exclusions are permitted (the sampled-never " \
            "category was killed by the cage-match: sampling is not a proof)"
         d = entry["evidence"]["graph_distance"]
-        assert (d == 1 if entry["reason"] == "parent_child_adjacent"
-                else d == 2), (
-            f"{entry['pair']}: reason {entry['reason']} inconsistent with "
-            f"graph distance {d} — rate alone never licenses not-checking")
+        if entry["reason"] == "parent_child_adjacent":
+            assert d == 1
+        else:
+            assert tuple(sorted(entry["pair"])) in NEAR_ADJACENT_ALLOWLIST, (
+                f"{entry['pair']}: near-adjacent exclusion NOT on the "
+                "allowlist — the d==2+rate trapdoor is back")
+        assert entry["justification"], f"{entry['pair']}: no receipt"
 
 
 def test_acm_checked_pairs_are_the_complement(acm, spheres):
@@ -317,6 +334,18 @@ def test_derived_step_matches_research_regime(gate):
 
 # --- margin budget ---------------------------------------------------------
 
+def test_encoder_term_tracks_artifact_lever(gate):
+    """The encoder-quantization margin term must be derived from the
+    ARTIFACT's lever bound, not research prose (amendment 9.1.8; cage-match
+    r4 caught it measured against the ghost 446 mm sampled lever)."""
+    cfg = json.loads(GATE_CONFIG_PATH.read_text())
+    tick_deg = 360.0 / 4096.0
+    required_mm = math.radians(tick_deg) * gate.levers_mm["shoulder_pan"]
+    assert cfg["margin_budget_mm"]["encoder_quantization"]["value"] \
+        >= required_mm - 1e-9, (
+        f"encoder term below the artifact-derived {required_mm:.3f} mm")
+
+
 def test_margin_is_a_sum_of_named_terms(gate):
     cfg = json.loads(GATE_CONFIG_PATH.read_text())
     terms = cfg["margin_budget_mm"]
@@ -419,6 +448,14 @@ def test_timing_benchmark_real_pair_semantics(gate, kin):
     dt_reject_late = time.perf_counter() - t0
     assert not rej_late.admitted
     assert dt_reject_late < 0.250, "late reject blew the admission budget"
+    # PROVE it died late: n_samples now counts EXECUTED checks, so a
+    # genuinely-late rejection must have burned a deep fraction of the path
+    assert rej_late.n_samples > 100, (
+        f"'late' reject executed only {rej_late.n_samples} checks — "
+        "it is wearing the late robe over an early exit")
+    assert rej.n_samples <= 2, "start-reject should exit almost immediately"
+    assert len(gate.checked_pairs) == 14, (
+        "checked-pair count drifted — timing numbers are not comparable")
 
     print(f"\n[benchmark] admitted ±80° 1-DOF pan sweep "
           f"({verdict.n_samples} samples): {dt_admission*1000:.1f} ms; "
@@ -487,21 +524,34 @@ def test_shoulder_table_clearance_is_pose_invariant(gate, kin):
 
 
 def test_no_tunneling_through_sampled_segment(gate, kin):
-    """Falsifier #8 made executable: between two admitted samples the gap can
-    dip at most S/2 (both endpoints checked; g(t) ≥ min(g0,g1) − S/2). Build
-    the worst case the bound allows — a max-lever joint step exactly at the
-    sampling allowance — and verify the interior dip the model predicts
-    stays within the margin budget's sampling term."""
-    dq = np.zeros(6)
-    dq[0] = gate.sampling_allowance_mm / gate.levers_mm["shoulder_pan"]
-    a = q_of(kin)
-    b = a + dq
-    n = gate.samples_for_delta(dq)
-    qs = kin.interpolate(a, b, max(n, 9))  # denser than the gate would go
-    ga = gate.check_pose(a).min_distance_mm
-    gb = gate.check_pose(b).min_distance_mm
-    interior_min = min(gate.check_pose(q).min_distance_mm for q in qs)
+    """Falsifier #8 made executable: between two checked samples the gap can
+    dip at most S/2 (both endpoints checked; g(t) ≥ min(g0,g1) − S/2).
+    Cage-match r4: a home-posture fixture is vacuous (24 mm of air) — so the
+    lemma is exercised on segments found NEAR THE MARGIN: random SOFT-status
+    poses (clearance inside the soft band), random direction, one full
+    sampling allowance of multi-joint sweep, interior probed 8× denser than
+    the gate samples."""
+    rng = np.random.default_rng(59)
+    lo = np.array([kin.joints[n].lower for n in JOINT_ORDER])
+    hi = np.array([kin.joints[n].upper for n in JOINT_ORDER])
     sampling_term = gate.sampling_allowance_mm / 2.0
-    assert interior_min >= min(ga, gb) - sampling_term - 1e-6, (
-        f"interior gap dipped {min(ga, gb) - interior_min:.3f} mm below the "
-        f"endpoints — exceeds the budgeted S/2 = {sampling_term} mm")
+    tested = 0
+    for q in rng.uniform(lo, hi, size=(3000, 6)):
+        if gate.check_pose(q).status != GateStatus.SOFT:
+            continue
+        direction = rng.normal(size=6)
+        direction /= np.abs(direction) @ gate._lever_mm_vec
+        dq = direction * gate.sampling_allowance_mm  # sweep == allowance
+        b = np.clip(q + dq, lo, hi)
+        ga = gate.check_pose(q).min_distance_mm
+        gb = gate.check_pose(b).min_distance_mm
+        dense = kin.interpolate(q, b, 17)
+        interior_min = min(gate.check_pose(x).min_distance_mm for x in dense)
+        assert interior_min >= min(ga, gb) - sampling_term - 1e-6, (
+            f"interior gap dipped {min(ga, gb) - interior_min:.3f} mm below "
+            f"endpoints near the margin — exceeds budgeted S/2 = "
+            f"{sampling_term} mm at q={q}")
+        tested += 1
+        if tested >= 25:
+            break
+    assert tested >= 10, "corpus found too few near-margin segments to test"

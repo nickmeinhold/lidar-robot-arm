@@ -2,8 +2,8 @@
   "_doc": "Motion-gate error budget + workspace config (crucible DESIGN §2.4). The hard margin is the SUM of margin_budget_mm terms — never a guess. Every term states its provenance; terms marked estimate are shadow mode's job to replace with measurements (steps 3-4). sweep_upper_bound uses levers from so101_spheres.json (amendment 9.1.8: derived from artifacts, not prose).",
   "margin_budget_mm": {
     "encoder_quantization": {
-      "value": 0.7,
-      "provenance": "measured: 4096 ticks/360deg = 0.088 deg x 7.79 mm/deg worst lever (RESEARCH Q2 lever table)"
+      "value": 0.8,
+      "provenance": "derived from the ARTIFACT, not research prose (amendment 9.1.8): 4096 ticks/360deg = 0.088 deg x 8.88 mm/deg (so101_spheres.json lever bound 509 mm/rad); test_encoder_term_tracks_artifact_lever pins the coupling"
     },
     "backlash": {
       "value": 4.0,

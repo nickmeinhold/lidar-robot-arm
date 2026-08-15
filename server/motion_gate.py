@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import enum
 import hashlib
+import itertools
 import json
 import math
 from dataclasses import dataclass, field
@@ -44,6 +45,13 @@ from .so101_kinematics import JOINT_ORDER, SO101Kinematics, default_kinematics
 # ~7 orders below encoder quantization (0.088 deg ≈ 1.5e-3 rad) — a float
 # guard, never a policy widening.
 LIMIT_EPSILON_RAD = 1e-9
+
+# THE near-adjacent exclusion policy, owned by the GATE (single door — the
+# sampler imports it from here): the only non-parent-child pair whose
+# exclusion is mechanically justified. The gate RE-IMPOSES this at load, so
+# an edited ACM that quietly moves a checked pair into excluded_pairs is
+# refused — partition alone is necessary, not sufficient (cage-match r4).
+NEAR_ADJACENT_ALLOWLIST = {("moving_jaw_so101_v1_link", "wrist_link")}
 
 MODEL_DIR = Path(__file__).parent / "static" / "models" / "SO101"
 SPHERES_PATH = MODEL_DIR / "so101_spheres.json"
@@ -128,8 +136,7 @@ class MotionGate:
             raise RuntimeError(
                 "so101_acm.json was measured against a DIFFERENT bake — "
                 "regenerate (python -m server.scripts.sample_acm)")
-        import hashlib as _hl
-        if acm["provenance"]["spheres_sha256"] != _hl.sha256(
+        if acm["provenance"]["spheres_sha256"] != hashlib.sha256(
                 spheres_bytes).hexdigest():
             raise RuntimeError(
                 "so101_acm.json was measured against a DIFFERENT sphere set — "
@@ -150,15 +157,28 @@ class MotionGate:
         # absent from both lists would silently never be checked — a false
         # negative by omission. RuntimeError, not assert: this must survive
         # python -O.
-        import itertools as _it
         all_pairs = {tuple(sorted(p))
-                     for p in _it.combinations(self.links, 2)}
+                     for p in itertools.combinations(self.links, 2)}
         listed = excluded | set(self.checked_pairs)
         if excluded & set(self.checked_pairs) or listed != all_pairs:
             raise RuntimeError(
                 "so101_acm.json does not partition the link-pair set "
                 f"(missing: {sorted(all_pairs - listed)}, "
                 f"double-listed: {sorted(excluded & set(self.checked_pairs))})")
+        # POLICY re-imposed at load (not just at ACM build): an excluded pair
+        # must be structurally adjacent per THIS bake, or on the allowlist.
+        bake = json.loads(Path(self.kin.bake_path).read_text())
+        adjacent = set()
+        for j in bake["joints"]:
+            a, b = j["parent"], j["child"]
+            if a in self.links and b in self.links:
+                adjacent.add(tuple(sorted((a, b))))
+        for p in excluded:
+            if p not in adjacent and p not in NEAR_ADJACENT_ALLOWLIST:
+                raise RuntimeError(
+                    f"excluded pair {p} is neither parent-child in the bake "
+                    "nor on the near-adjacent allowlist — refusing an ACM "
+                    "that un-checks a non-structural pair")
 
         # flatten sphere set for vectorized checks: world spheres are built
         # per pose; pair index arrays are precomputed once.
@@ -184,6 +204,17 @@ class MotionGate:
         self._rsum = np.array(rr)
 
         budget = cfg["margin_budget_mm"]
+        required_terms = {"encoder_quantization", "backlash",
+                          "tracking_overshoot", "calibration_homing",
+                          "sphere_fit_residual", "sampling"}
+        if not required_terms <= set(budget):
+            raise RuntimeError(
+                f"gate config missing margin terms: {required_terms - set(budget)}")
+        if any(float(t["value"]) < 0 for t in budget.values()):
+            raise RuntimeError("negative margin-budget term — refusing")
+        if float(cfg["soft_band_extra_mm"]) <= 0 \
+                or float(budget["sampling"]["value"]) <= 0:
+            raise RuntimeError("non-positive soft band / sampling term")
         self.hard_margin_mm: float = float(
             sum(t["value"] for t in budget.values()))
         self.soft_band_mm: float = self.hard_margin_mm + float(
@@ -323,7 +354,11 @@ class MotionGate:
             status = GateStatus.CLEAR
             scale = 1.0
 
-        return PoseVerdict(status=status, min_distance_mm=round(min_mm, 2),
+        # the scalar a reader reconciles with the status must be the
+        # GOVERNING clearance — a table-grazing pose must not report a fat
+        # self-gap (cage-match r4)
+        return PoseVerdict(status=status,
+                           min_distance_mm=round(governing_mm, 2),
                            nearest_pair=nearest, velocity_scale=scale,
                            reasons=tuple(reasons))
 
@@ -375,9 +410,6 @@ class MotionGate:
                     violating_step=step, n_samples=n_total,
                     min_distance_mm=min_mm)
             n = self.samples_for_delta(dq)
-            # exact pose accounting: each segment re-checks its start pose
-            # (already checked as the previous segment's end), so count it once
-            n_total += n if step == 0 else n - 1
             qs = self.kin.interpolate(a, b, n)
             # the admission proof requires ENDPOINT-INCLUSIVE samples with
             # n−1 intervals; verify the helper's contract rather than
@@ -394,7 +426,10 @@ class MotionGate:
                 raise RuntimeError(
                     "interpolate() broke its uniform endpoint-inclusive "
                     "contract — the sampling proof is void")
-            for q in qs:
+            for i_q, q in enumerate(qs):
+                if step > 0 and i_q == 0:
+                    continue  # shared endpoint: checked as previous segment's end
+                n_total += 1  # counts EXECUTED checks — honest on rejection too
                 v = self.check_pose(q)
                 if v.min_distance_mm < min_mm:
                     min_mm = v.min_distance_mm

@@ -21,7 +21,8 @@
     "min_gap_mm": -49.5,
     "collision_rate": 1.0,
     "graph_distance": 1
-   }
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
   },
   {
    "pair": [
@@ -34,7 +35,8 @@
     "min_gap_mm": -37.4,
     "collision_rate": 1.0,
     "graph_distance": 1
-   }
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
   },
   {
    "pair": [
@@ -47,7 +49,8 @@
     "min_gap_mm": -38.9,
     "collision_rate": 1.0,
     "graph_distance": 1
-   }
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
   },
   {
    "pair": [
@@ -60,7 +63,8 @@
     "min_gap_mm": -52.0,
     "collision_rate": 1.0,
     "graph_distance": 1
-   }
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
   },
   {
    "pair": [
@@ -73,7 +77,8 @@
     "min_gap_mm": -55.3,
     "collision_rate": 1.0,
     "graph_distance": 1
-   }
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
   },
   {
    "pair": [
@@ -100,7 +105,8 @@
     "min_gap_mm": -52.1,
     "collision_rate": 1.0,
     "graph_distance": 1
-   }
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
   }
  ],
  "checked_pairs": [

@@ -38,18 +38,13 @@ from pathlib import Path
 import numpy as np
 
 from server.so101_kinematics import JOINT_ORDER, SO101Kinematics
+from server.motion_gate import NEAR_ADJACENT_ALLOWLIST  # gate-owned policy
 from server.scripts.generate_spheres import MODEL_DIR
 
 OUT_PATH = MODEL_DIR / "so101_acm.json"
 N_SAMPLES = 20_000
 SEED = 2
 NEAR_ADJACENT_RATE = 0.90
-# The ONLY grandchild pair whose exclusion is mechanically justified: the
-# moving jaw pivots on the gripper motor which is bolted INTO the wrist
-# bracket — jaw-base and wrist geometry interleave by construction at every
-# jaw angle (measured −24.9 mm, 100% of poses). Any other d=2 pair reaching
-# the rate threshold is a broken sphere model, not a new weld.
-NEAR_ADJACENT_ALLOWLIST = {("moving_jaw_so101_v1_link", "wrist_link")}
 
 
 def link_graph_distances(bake: dict, names: list[str]) -> dict[tuple[str, str], int]:
@@ -126,7 +121,14 @@ def main() -> None:
               "collision_rate": round(rate, 4), "graph_distance": d}
         if d == 1:
             excluded.append({"pair": list(p), "reason": "parent_child_adjacent",
-                             "evidence": ev})
+                             "evidence": ev,
+                             "justification": (
+                                 "links articulate on a shared joint; their "
+                                 "sphere models interpenetrate at the joint "
+                                 "interface at every angle (rate "
+                                 f"{rate:.2f}) — self-contact at the "
+                                 "articulation is structural, and checking "
+                                 "it would hold the gate permanently HARD")})
         elif p in NEAR_ADJACENT_ALLOWLIST and rate >= NEAR_ADJACENT_RATE:
             excluded.append({"pair": list(p),
                              "reason": "near_adjacent_default_touching",
