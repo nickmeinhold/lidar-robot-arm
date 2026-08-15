@@ -1,0 +1,39 @@
+{
+  "_doc": "Motion-gate error budget + workspace config (crucible DESIGN §2.4). The hard margin is the SUM of margin_budget_mm terms — never a guess. Every term states its provenance; terms marked estimate are shadow mode's job to replace with measurements (steps 3-4). sweep_upper_bound uses levers from so101_spheres.json (amendment 9.1.8: derived from artifacts, not prose).",
+  "margin_budget_mm": {
+    "encoder_quantization": {
+      "value": 0.8,
+      "provenance": "derived from the ARTIFACT, not research prose (amendment 9.1.8): 4096 ticks/360deg = 0.088 deg x 8.88 mm/deg (so101_spheres.json lever bound 509 mm/rad); test_encoder_term_tracks_artifact_lever pins the coupling"
+    },
+    "backlash": {
+      "value": 4.5,
+      "provenance": "estimate: +/-0.5 deg gear backlash x 8.88 mm/deg (ARTIFACT lever bound 509 mm/rad, ceiled — cage-match r6 caught the ghost-lever sibling of the r4 encoder fix); SHADOW-MEASURE on this arm (step 4). Load-time door: the gate refuses a config whose encoder/backlash terms undershoot their artifact-derived minimums."
+    },
+    "tracking_overshoot": {
+      "value": 3.0,
+      "provenance": "estimate: servo tracking lag at demo GOAL_SPEED; SHADOW-MEASURE via Present_Position trace (step 4). The gate certifies commands, physics lags — this term is that gap's budget (Temper #9)."
+    },
+    "calibration_homing": {
+      "value": 2.0,
+      "provenance": "estimate until commissioning residuals exist (amendment 9.1.9 / 10.1.7): bounded by the multi-pose suite's measured tool-height residuals in step 3"
+    },
+    "sphere_fit_residual": {
+      "value": 0.0,
+      "provenance": "zero by construction: spheres CONTAIN the continuous surface (max-radius rule + grid covering-radius inflation h/sqrt(3)=1.73mm, verified by test_mesh_containment_100_percent with independent random surface sampling) — the fit errs conservative, never optimistic"
+    },
+    "sampling": {
+      "value": 1.0,
+      "provenance": "derived: half the max inter-sample sweep; the gate samples so that sweep <= 2 x this term via sum(|dtheta_j| x lever_j) (amendment 10.1.3)"
+    }
+  },
+  "soft_band_extra_mm": 10.0,
+  "_soft_band_provenance": "anchored on the HOME pose: sphere over-approximation reads base|upper_arm at ~24.5 mm there (true mesh clearance is larger); soft threshold = 10.7 hard + 10 = 20.7 mm keeps home CLEAR while still speed-scaling genuine approaches. Shadow mode (step 4) re-tunes on the false-positive log.",
+  "soft_velocity_exponent": 3.0,
+  "table": {
+    "enabled": true,
+    "height_m": null,
+    "exempt_links": ["base_link", "shoulder_link"],
+    "_exempt_reason": "base_link is bolted to the table (straddles the plane by construction); shoulder_link's only DOF is shoulder_pan about the vertical axis, so its table clearance is pose-INVARIANT (~+6 mm static gap) — it cannot move into the table",
+    "_metrology_note": "height_m null = derive v0 from the spheres artifact's base_min_z_m (the base mesh's lowest point = the surface it stands on; the URDF origin is NOT the tabletop). Amendment 10.1.8: replace with tool-tip touch-test at 3 points during the step-3 calibration session; invalidated whenever the base moves."
+  }
+}

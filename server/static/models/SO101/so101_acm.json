@@ -1,0 +1,296 @@
+{
+ "provenance": {
+  "generator": "server/scripts/sample_acm.py",
+  "spheres_sha256": "0495a1b90b06ada96b205511ec9c8260278995a511c85e98166aa04209b8c1a8",
+  "bake_sha256": "ae89383141ae6cce9b1df9b167dc911997e2760ff77aa6e9a49aa6e6f9a18b0f",
+  "params": {
+   "n_samples": 20000,
+   "seed": 2,
+   "near_adjacent_rate": 0.9
+  }
+ },
+ "excluded_pairs": [
+  {
+   "pair": [
+    "base_link",
+    "shoulder_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -49.5,
+    "collision_rate": 1.0,
+    "graph_distance": 1
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -37.4,
+    "collision_rate": 1.0,
+    "graph_distance": 1
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "wrist_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -38.9,
+    "collision_rate": 1.0,
+    "graph_distance": 1
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "upper_arm_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -52.0,
+    "collision_rate": 1.0,
+    "graph_distance": 1
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "wrist_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -55.3,
+    "collision_rate": 1.0,
+    "graph_distance": 1
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
+  },
+  {
+   "pair": [
+    "moving_jaw_so101_v1_link",
+    "wrist_link"
+   ],
+   "reason": "near_adjacent_default_touching",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -24.9,
+    "collision_rate": 1.0,
+    "graph_distance": 2
+   },
+   "justification": "jaw pivots on the gripper motor bolted into the wrist bracket; geometries interleave by construction at every jaw angle"
+  },
+  {
+   "pair": [
+    "shoulder_link",
+    "upper_arm_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -52.1,
+    "collision_rate": 1.0,
+    "graph_distance": 1
+   },
+   "justification": "links articulate on a shared joint; their sphere models interpenetrate at the joint interface at every angle (rate 1.00) \u2014 self-contact at the articulation is structural, and checking it would hold the gate permanently HARD"
+  }
+ ],
+ "checked_pairs": [
+  {
+   "pair": [
+    "base_link",
+    "gripper_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -63.4,
+    "collision_rate": 0.1303,
+    "graph_distance": 5,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "lower_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -65.1,
+    "collision_rate": 0.083,
+    "graph_distance": 3,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -55.4,
+    "collision_rate": 0.0999,
+    "graph_distance": 6,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "upper_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -26.1,
+    "collision_rate": 0.0537,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "wrist_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -62.7,
+    "collision_rate": 0.1272,
+    "graph_distance": 4,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "lower_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -5.5,
+    "collision_rate": 0.0493,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "shoulder_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -61.1,
+    "collision_rate": 0.1374,
+    "graph_distance": 4,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "upper_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -29.8,
+    "collision_rate": 0.0246,
+    "graph_distance": 3,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": 5.3,
+    "collision_rate": 0.0,
+    "graph_distance": 3,
+    "never_collided_in_sample": true
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "shoulder_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -81.1,
+    "collision_rate": 0.2087,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "moving_jaw_so101_v1_link",
+    "shoulder_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -58.0,
+    "collision_rate": 0.0872,
+    "graph_distance": 5,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "moving_jaw_so101_v1_link",
+    "upper_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -41.3,
+    "collision_rate": 0.0103,
+    "graph_distance": 4,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "shoulder_link",
+    "wrist_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -65.9,
+    "collision_rate": 0.1785,
+    "graph_distance": 3,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "upper_arm_link",
+    "wrist_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -36.2,
+    "collision_rate": 0.0885,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
+   }
+  }
+ ]
+}
