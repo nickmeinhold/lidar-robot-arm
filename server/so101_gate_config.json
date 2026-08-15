@@ -19,7 +19,7 @@
     },
     "sphere_fit_residual": {
       "value": 0.0,
-      "provenance": "zero by construction: spheres CONTAIN the densified surface (max-radius rule + 1.5 mm edge inflation, verified by test_mesh_containment_100_percent) — the fit errs conservative, never optimistic"
+      "provenance": "zero by construction: spheres CONTAIN the continuous surface (max-radius rule + grid covering-radius inflation h/sqrt(3)=1.73mm, verified by test_mesh_containment_100_percent with independent random surface sampling) — the fit errs conservative, never optimistic"
     },
     "sampling": {
       "value": 1.0,

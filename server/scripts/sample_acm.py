@@ -1,18 +1,24 @@
 """Offline allowed-collision-matrix sampler — spine step 2 (DESIGN §2.4).
 
-MoveIt-style pair policy WITH RECEIPTS: start from all link pairs; a pair is
-excluded only with a reason and evidence —
+Pair policy with receipts, STRUCTURAL exclusions only:
 
-- ``parent_child_adjacent``: joined by a joint; contact at the joint is
-  structural, not a collision to prevent.
-- ``near_adjacent_default_touching``: grandchild geometry measured touching
-  in ≥90% of sampled poses (MoveIt's "Adjacent/Default" category — always-
-  touching by construction, e.g. wrist|moving_jaw).
-- ``sampled_never_hull_proven``: zero sphere contacts across the sample AND
-  the convex-hull LP proof (a mesh is a subset of its hull; disjoint hulls ⟹
-  disjoint meshes — an instrument that never touches spheres) holds at every
-  sampled pose. Sampling alone is a check, not a certificate
-  (amendment 9.1.11).
+- ``parent_child_adjacent`` (kinematic-graph distance 1): joined by a joint;
+  contact at the joint is structural, not a collision to prevent.
+- ``near_adjacent_default_touching`` (graph distance 2, AND measured touching
+  in ≥90% of sampled poses): grandchild geometry that is always-touching by
+  construction (MoveIt's "Adjacent/Default" category, e.g. wrist|moving_jaw).
+  BOTH conditions are required — a distant pair the sphere model reads as
+  ≥90%-touching is evidence the model is broken for that pair, and the build
+  FAILS LOUDLY rather than excluding it (rate alone must never license
+  not-checking).
+
+Pairs that never collided across the sample are KEPT CHECKED. The cage-match
+killed the former ``sampled_never_hull_proven`` category: per-pose convex-hull
+LP disjointness at finitely many random poses is not a continuous-C-space
+proof, its solver-status mapping failed open on "unknown", and the pair it
+blessed (lower_arm|moving_jaw, min gap 5.7 mm) sits inside the hard margin.
+Checking a pair costs microseconds; a wrong exclusion is a false negative by
+policy, forever. Subtraction over certification.
 
     python -m server.scripts.sample_acm
 
@@ -25,18 +31,42 @@ import hashlib
 import itertools
 import json
 import sys
+from collections import deque
 from pathlib import Path
 
 import numpy as np
 
 from server.so101_kinematics import JOINT_ORDER, SO101Kinematics
-from server.scripts.generate_spheres import MODEL_DIR, load_link_pointclouds
+from server.scripts.generate_spheres import MODEL_DIR
 
 OUT_PATH = MODEL_DIR / "so101_acm.json"
 N_SAMPLES = 20_000
 SEED = 2
 NEAR_ADJACENT_RATE = 0.90
-HULL_POSES = 1500
+
+
+def link_graph_distances(bake: dict, names: list[str]) -> dict[tuple[str, str], int]:
+    """BFS hop-count between links over the joint graph (all joint types)."""
+    adj: dict[str, set[str]] = {n: set() for n in names}
+    for j in bake["joints"]:
+        a, b = j["parent"], j["child"]
+        if a in adj and b in adj:
+            adj[a].add(b)
+            adj[b].add(a)
+    out: dict[tuple[str, str], int] = {}
+    for src in names:
+        dist = {src: 0}
+        q = deque([src])
+        while q:
+            u = q.popleft()
+            for v in adj[u]:
+                if v not in dist:
+                    dist[v] = dist[u] + 1
+                    q.append(v)
+        for dst in names:
+            if dst != src:
+                out[tuple(sorted((src, dst)))] = dist.get(dst, 99)
+    return out
 
 
 def sphere_min_gaps(kin, links, pairs, qs):
@@ -62,111 +92,55 @@ def sphere_min_gaps(kin, links, pairs, qs):
     return mins, hits
 
 
-def hull_proof(kin, pairs, qs):
-    """True iff hulls are disjoint at EVERY pose for every pair (scipy)."""
-    from scipy.optimize import linprog
-    from scipy.spatial import ConvexHull
-
-    clouds = load_link_pointclouds(MODEL_DIR)
-    hulls = {}
-    for name, pts in clouds.items():
-        hulls[name] = pts[ConvexHull(pts).vertices]
-
-    def intersect(A, B):
-        na, nb = len(A), len(B)
-        A_eq = np.zeros((5, na + nb))
-        A_eq[:3, :na] = A.T
-        A_eq[:3, na:] = -B.T
-        A_eq[3, :na] = 1.0
-        A_eq[4, na:] = 1.0
-        res = linprog(np.zeros(na + nb), A_eq=A_eq,
-                      b_eq=np.array([0, 0, 0, 1.0, 1.0]),
-                      bounds=[(0, None)] * (na + nb), method="highs")
-        return res.status == 0
-
-    proven = {}
-    for a, b in pairs:
-        ok = True
-        for q in qs:
-            fr = kin.frames(q)
-            Ah = (fr[a][:3, :3] @ hulls[a].T).T + fr[a][:3, 3]
-            Bh = (fr[b][:3, :3] @ hulls[b].T).T + fr[b][:3, 3]
-            if intersect(Ah, Bh):
-                ok = False
-                break
-        proven[(a, b)] = ok
-    return proven
-
-
 def main() -> None:
-    spheres = json.loads((MODEL_DIR / "so101_spheres.json").read_text())
+    spheres_bytes = (MODEL_DIR / "so101_spheres.json").read_bytes()
+    spheres = json.loads(spheres_bytes)
     links = spheres["links"]
+    bake = json.loads((MODEL_DIR / "so101_urdf.json").read_text())
     kin = SO101Kinematics()
     names = list(links)
-    all_pairs = list(itertools.combinations(names, 2))
-
-    # structural adjacency: parent-child across ANY joint (fixed included),
-    # collapsed over massless frames
-    bake = json.loads((MODEL_DIR / "so101_urdf.json").read_text())
-    adjacent = set()
-    for j in bake["joints"]:
-        a, b = j["parent"], j["child"]
-        if a in links and b in links:
-            adjacent.add(tuple(sorted((a, b))))
+    pairs = [tuple(sorted(p)) for p in itertools.combinations(names, 2)]
+    gdist = link_graph_distances(bake, names)
 
     rng = np.random.default_rng(SEED)
     lo = np.array([kin.joints[n].lower for n in JOINT_ORDER])
     hi = np.array([kin.joints[n].upper for n in JOINT_ORDER])
     qs = rng.uniform(lo, hi, size=(N_SAMPLES, 6))
 
-    pairs = [tuple(sorted(p)) for p in all_pairs]
     print(f"sampling {len(pairs)} pairs × {N_SAMPLES} poses …")
     mins, hits = sphere_min_gaps(kin, links, pairs, qs)
 
     excluded, checked = [], []
-    never_candidates = []
     for p in sorted(pairs):
         rate = hits[p] / N_SAMPLES
-        gap_mm = round(mins[p] * 1000.0, 1)
+        gap_mm = round(float(mins[p]) * 1000.0, 1)
+        d = gdist[p]
         ev = {"n_samples": N_SAMPLES, "min_gap_mm": gap_mm,
-              "collision_rate": round(rate, 4)}
-        if p in adjacent:
+              "collision_rate": round(rate, 4), "graph_distance": d}
+        if d == 1:
             excluded.append({"pair": list(p), "reason": "parent_child_adjacent",
-                             "evidence": {**ev, "joint": "structural"}})
-        elif rate >= NEAR_ADJACENT_RATE:
+                             "evidence": ev})
+        elif d == 2 and rate >= NEAR_ADJACENT_RATE:
             excluded.append({"pair": list(p),
                              "reason": "near_adjacent_default_touching",
                              "evidence": ev})
-        elif hits[p] == 0:
-            never_candidates.append((p, ev))
+        elif rate >= NEAR_ADJACENT_RATE:
+            raise RuntimeError(
+                f"pair {p} reads {rate:.0%} colliding at graph distance {d} — "
+                "a DISTANT pair the sphere model says is always touching means "
+                "the model is broken for that pair; refusing to build an ACM "
+                "over it (rate alone never licenses not-checking)")
         else:
-            checked.append({"pair": list(p), "evidence": ev})
-
-    if never_candidates:
-        print(f"hull-proving {len(never_candidates)} sampled-never pairs …")
-        proof_qs = rng.uniform(lo, hi, size=(HULL_POSES, 6))
-        proven = hull_proof(kin, [p for p, _ in never_candidates], proof_qs)
-        for p, ev in never_candidates:
-            if proven[p]:
-                excluded.append({"pair": list(p),
-                                 "reason": "sampled_never_hull_proven",
-                                 "evidence": {**ev, "hull_poses": HULL_POSES}})
-            else:
-                # sampling said never, hulls could not prove it — CHECK it;
-                # conservative direction (over-approximate hulls of concave
-                # links overlap where meshes may not)
-                checked.append({"pair": list(p),
-                                "evidence": {**ev, "hull_proof": "inconclusive"}})
+            note = {"never_collided_in_sample": hits[p] == 0}
+            checked.append({"pair": list(p), "evidence": {**ev, **note}})
 
     out = {
         "provenance": {
             "generator": "server/scripts/sample_acm.py",
-            "spheres_sha256": hashlib.sha256(
-                (MODEL_DIR / "so101_spheres.json").read_bytes()).hexdigest(),
+            "spheres_sha256": hashlib.sha256(spheres_bytes).hexdigest(),
             "bake_sha256": spheres["provenance"]["bake_sha256"],
             "params": {"n_samples": N_SAMPLES, "seed": SEED,
-                       "near_adjacent_rate": NEAR_ADJACENT_RATE,
-                       "hull_poses": HULL_POSES},
+                       "near_adjacent_rate": NEAR_ADJACENT_RATE},
         },
         "excluded_pairs": excluded,
         "checked_pairs": checked,

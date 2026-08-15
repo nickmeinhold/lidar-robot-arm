@@ -38,6 +38,13 @@ import numpy as np
 
 from .so101_kinematics import JOINT_ORDER, SO101Kinematics, default_kinematics
 
+# Closed-interval joint limits are compared with this slack so that a pose
+# sitting EXACTLY on a limit (a legal boundary value that may have ridden
+# through float round-trips) is not rejected by representation noise. It is
+# ~7 orders below encoder quantization (0.088 deg ≈ 1.5e-3 rad) — a float
+# guard, never a policy widening.
+LIMIT_EPSILON_RAD = 1e-9
+
 MODEL_DIR = Path(__file__).parent / "static" / "models" / "SO101"
 SPHERES_PATH = MODEL_DIR / "so101_spheres.json"
 ACM_PATH = MODEL_DIR / "so101_acm.json"
@@ -103,7 +110,8 @@ class MotionGate:
         config_path: Path = GATE_CONFIG_PATH,
     ) -> None:
         self.kin = kin or default_kinematics()
-        spheres = json.loads(Path(spheres_path).read_text())
+        spheres_bytes = Path(spheres_path).read_bytes()
+        spheres = json.loads(spheres_bytes)
         acm = json.loads(Path(acm_path).read_text())
         cfg = json.loads(Path(config_path).read_text())
 
@@ -120,6 +128,13 @@ class MotionGate:
             raise RuntimeError(
                 "so101_acm.json was measured against a DIFFERENT bake — "
                 "regenerate (python -m server.scripts.sample_acm)")
+        import hashlib as _hl
+        if acm["provenance"]["spheres_sha256"] != _hl.sha256(
+                spheres_bytes).hexdigest():
+            raise RuntimeError(
+                "so101_acm.json was measured against a DIFFERENT sphere set — "
+                "regenerate the ACM after any sphere regeneration (the chain "
+                "bake → spheres → ACM must be unbroken)")
 
         self.links: list[str] = list(spheres["links"])
         self._centers = {n: np.array([s["center_m"] for s in e["spheres"]])
@@ -131,7 +146,19 @@ class MotionGate:
         excluded = {tuple(sorted(e["pair"])) for e in acm["excluded_pairs"]}
         self.checked_pairs: list[tuple[str, str]] = [
             tuple(sorted(e["pair"])) for e in acm["checked_pairs"]]
-        assert not excluded & set(self.checked_pairs)
+        # The ACM must PARTITION the pair set: disjoint AND complete. A pair
+        # absent from both lists would silently never be checked — a false
+        # negative by omission. RuntimeError, not assert: this must survive
+        # python -O.
+        import itertools as _it
+        all_pairs = {tuple(sorted(p))
+                     for p in _it.combinations(self.links, 2)}
+        listed = excluded | set(self.checked_pairs)
+        if excluded & set(self.checked_pairs) or listed != all_pairs:
+            raise RuntimeError(
+                "so101_acm.json does not partition the link-pair set "
+                f"(missing: {sorted(all_pairs - listed)}, "
+                f"double-listed: {sorted(excluded & set(self.checked_pairs))})")
 
         # flatten sphere set for vectorized checks: world spheres are built
         # per pose; pair index arrays are precomputed once.
@@ -213,10 +240,14 @@ class MotionGate:
 
     def check_pose(self, q: np.ndarray) -> PoseVerdict:
         q = np.asarray(q, dtype=float)
+        if q.shape != (len(JOINT_ORDER),):
+            raise ValueError(
+                f"pose must be shape ({len(JOINT_ORDER)},), got {q.shape}")
         reasons: list[GateReason] = []
 
         for i, name in enumerate(JOINT_ORDER):
-            if not (self._lo[i] - 1e-9 <= q[i] <= self._hi[i] + 1e-9):
+            if not (self._lo[i] - LIMIT_EPSILON_RAD <= q[i]
+                    <= self._hi[i] + LIMIT_EPSILON_RAD):
                 reasons.append(GateReason(Reason.JOINT_LIMIT, {
                     "joint": name, "value_rad": float(q[i]),
                     "limits_rad": [float(self._lo[i]), float(self._hi[i])]}))
@@ -258,9 +289,13 @@ class MotionGate:
             depth = (self.soft_band_mm - governing_mm) / (
                 self.soft_band_mm - self.hard_margin_mm)
             scale = float(math.exp(-self._soft_exp_k * depth))
-            reasons.append(GateReason(Reason.SELF_COLLISION_PAIR, {
-                "pair": list(nearest), "distance_mm": round(governing_mm, 1),
-                "band": "soft"}))
+            if table_mm < min_mm:
+                reasons.append(GateReason(Reason.TABLE_PLANE, {
+                    "clearance_mm": round(table_mm, 1), "band": "soft"}))
+            else:
+                reasons.append(GateReason(Reason.SELF_COLLISION_PAIR, {
+                    "pair": list(nearest),
+                    "distance_mm": round(governing_mm, 1), "band": "soft"}))
         else:
             status = GateStatus.CLEAR
             scale = 1.0
@@ -295,11 +330,19 @@ class MotionGate:
             dq = b - a
             # wrist_roll rides a LIMITED interval; a >180° linear excursion
             # is almost always an author who wanted the forbidden short arc
-            # (amendment 10.1.4) — flag for the IR repair loop.
+            # (amendment 10.1.4). FAIL CLOSED on a safety surface (cage-match
+            # consensus): reject with WRAP_SEAM so the IR repair loop rewrites
+            # the keyframes — never silently drive the long way around.
             if abs(dq[wrist_i]) > math.pi:
-                reasons.append(GateReason(Reason.WRAP_SEAM, {
-                    "joint": "wrist_roll", "step": step,
-                    "delta_deg": round(math.degrees(dq[wrist_i]), 1)}))
+                return SequenceVerdict(
+                    admitted=False,
+                    reasons=tuple(list(reasons) + [GateReason(
+                        Reason.WRAP_SEAM, {
+                            "joint": "wrist_roll", "step": step,
+                            "delta_deg": round(
+                                math.degrees(dq[wrist_i]), 1)})]),
+                    violating_step=step, n_samples=n_total,
+                    min_distance_mm=min_mm)
             n = self.samples_for_delta(dq)
             n_total += n
             qs = self.kin.interpolate(a, b, n)

@@ -31,7 +31,6 @@ from server.motion_gate import (
     ACM_PATH,
     GATE_CONFIG_PATH,
 )
-from server.scripts.generate_spheres import load_link_pointclouds, read_stl
 
 MODEL_DIR = Path(__file__).parent / "static" / "models" / "SO101"
 
@@ -99,35 +98,43 @@ def test_levers_present_and_sane(spheres):
 # --- containment oracle (independent re-verification) ----------------------
 
 def test_mesh_containment_100_percent(spheres):
-    """THE soundness anchor: every link's mesh vertices sit inside its sphere
-    union. Independent recompute — this test reads the STLs and the JSON and
-    does its own math; it must not import the generator's fit routines.
+    """THE soundness anchor, verified by a DIFFERENT method than the
+    generator used (cage-match: a verifier sharing the generator's grid
+    would share its blind spot). The generator fits a deterministic
+    barycentric grid; this test throws RANDOM barycentric samples at every
+    triangle — vertices, edges, and INTERIORS — and requires each inside the
+    sphere union. Interiors are exactly where the old half-edge inflation
+    had its 0.23 mm hole (covering radius is h/√3, not h/2)."""
+    from server.scripts.generate_spheres import load_link_meshes
 
-    RESEARCH: p99 radii leave 0.35–0.91% of geometry outside (unsound in the
-    unsafe direction); the max rule + half-longest-triangle-edge inflation
-    gives true containment."""
-    clouds = load_link_pointclouds(MODEL_DIR)
+    rng = np.random.default_rng(97)
     for name, entry in spheres["links"].items():
-        pts = clouds[name]  # (N,3) link-frame vertices
+        tris = load_link_meshes(MODEL_DIR)[name]  # (n,3,3) link frame
         centers = np.array([s["center_m"] for s in entry["spheres"]])
         radii = np.array([s["radius_m"] for s in entry["spheres"]])
+        # 4 random interior points per triangle + the 3 vertices
+        u = rng.random((len(tris), 4, 1)); v = rng.random((len(tris), 4, 1))
+        flip = (u + v) > 1.0
+        u = np.where(flip, 1.0 - u, u); v = np.where(flip, 1.0 - v, v)
+        w = 1.0 - u - v
+        interior = (tris[:, None, 0] * u + tris[:, None, 1] * v
+                    + tris[:, None, 2] * w).reshape(-1, 3)
+        pts = np.concatenate([tris.reshape(-1, 3), interior])
         d = np.linalg.norm(pts[:, None, :] - centers[None, :, :], axis=2)
         inside = (d <= radii[None, :] + 1e-9).any(axis=1)
-        coverage = inside.mean()
-        assert coverage == 1.0, (
-            f"{name}: {(~inside).sum()} of {len(pts)} vertices escape the "
-            f"sphere union (coverage {coverage:.4%}) — containment broken"
-        )
+        assert inside.all(), (
+            f"{name}: {(~inside).sum()} of {len(pts)} surface samples escape "
+            "the sphere union — containment broken")
 
 
-def test_triangle_bulge_inflation_recorded(spheres):
-    """Vertex containment alone allows a triangle to bulge between spheres;
-    the radius must carry the half-longest-edge inflation (RESEARCH)."""
+def test_inflation_is_grid_covering_radius(spheres):
+    """The radius inflation must be ≥ the densify grid's covering radius
+    h/√3 (any triangle point is within that of a sample) — h/2 was the
+    cage-match's 0.23 mm hole."""
+    h = 0.003  # DENSIFY_EDGE_M
     for name, entry in spheres["links"].items():
-        assert entry["edge_inflation_m"] >= 0
-        # dense CAD exports: correction must be sub-2mm or the mesh isn't
-        # what the research measured
-        assert entry["edge_inflation_m"] < 0.002
+        assert entry["edge_inflation_m"] >= h / math.sqrt(3.0) - 1e-12
+        assert entry["edge_inflation_m"] < 0.0025
 
 
 # --- ACM: every exclusion carries its receipt ------------------------------
@@ -138,9 +145,13 @@ def test_acm_exclusions_have_reasons(acm):
     for entry in acm["excluded_pairs"]:
         assert entry["reason"] in {
             "parent_child_adjacent", "near_adjacent_default_touching",
-            "sampled_never_hull_proven",
-        }
-        assert entry["evidence"], f"{entry['pair']} carries no evidence"
+        }, "only STRUCTURAL exclusions are permitted (the sampled-never " \
+           "category was killed by the cage-match: sampling is not a proof)"
+        d = entry["evidence"]["graph_distance"]
+        assert (d == 1 if entry["reason"] == "parent_child_adjacent"
+                else d == 2), (
+            f"{entry['pair']}: reason {entry['reason']} inconsistent with "
+            f"graph distance {d} — rate alone never licenses not-checking")
 
 
 def test_acm_checked_pairs_are_the_complement(acm, spheres):
@@ -148,51 +159,6 @@ def test_acm_checked_pairs_are_the_complement(acm, spheres):
     all_pairs = n_links * (n_links - 1) // 2
     assert len(acm["excluded_pairs"]) + len(acm["checked_pairs"]) == all_pairs
 
-
-@pytest.mark.slow
-def test_hull_proof_for_sampled_never_pairs(acm, kin):
-    """Amendment 9.1.11: ignored pairs need a deterministic geometric
-    justification — for sampled-never pairs that is the convex-hull LP proof
-    (RESEARCH: a mesh is a subset of its hull; disjoint hulls ⟹ disjoint
-    meshes). Re-proven here at 200 fresh poses per pair."""
-    scipy_spatial = pytest.importorskip("scipy.spatial")
-    from scipy.optimize import linprog
-
-    clouds = load_link_pointclouds(MODEL_DIR)
-    hulls = {}
-    for name, pts in clouds.items():
-        hull = scipy_spatial.ConvexHull(pts)
-        hulls[name] = pts[hull.vertices]
-
-    def hulls_intersect(A: np.ndarray, B: np.ndarray) -> bool:
-        # feasibility: exists λ,μ ≥ 0, Σλ=1, Σμ=1, Aᵀλ − Bᵀμ = 0
-        na, nb = len(A), len(B)
-        A_eq = np.zeros((5, na + nb))
-        A_eq[:3, :na] = A.T
-        A_eq[:3, na:] = -B.T
-        A_eq[3, :na] = 1.0
-        A_eq[4, na:] = 1.0
-        b_eq = np.array([0.0, 0.0, 0.0, 1.0, 1.0])
-        res = linprog(np.zeros(na + nb), A_eq=A_eq, b_eq=b_eq,
-                      bounds=[(0, None)] * (na + nb), method="highs")
-        return res.status == 0
-
-    never = [e for e in acm["excluded_pairs"]
-             if e["reason"] == "sampled_never_hull_proven"]
-    assert never, "expected sampled-never exclusions (research found two)"
-    rng = np.random.default_rng(11)
-    lo = np.array([kin.joints[n].lower for n in JOINT_ORDER])
-    hi = np.array([kin.joints[n].upper for n in JOINT_ORDER])
-    for entry in never:
-        a, b = entry["pair"]
-        for _ in range(200):
-            q = rng.uniform(lo, hi)
-            fr = kin.frames(q)
-            Ah = (fr[a][:3, :3] @ hulls[a].T).T + fr[a][:3, 3]
-            Bh = (fr[b][:3, :3] @ hulls[b].T).T + fr[b][:3, 3]
-            assert not hulls_intersect(Ah, Bh), (
-                f"hull proof FAILED for excluded pair {a}|{b} at {q}"
-            )
 
 
 # --- the gate: statuses, reasons, degenerate states ------------------------
@@ -283,12 +249,16 @@ def test_limit_grazing_admitted(gate, kin):
 def test_wrap_seam_flagged_for_long_wrist_roll_path(gate, kin):
     """wrist_roll's span is ~320°, a convex interval — interpolation is
     LINEAR (never circular-shortest). A step demanding >180° of wrist_roll
-    travel is almost always an author who wanted the forbidden short-cut:
-    flag WRAP_SEAM so the IR layer can repair (amendment 10.1.4)."""
+    travel is almost always an author who wanted the forbidden short-cut.
+    FAIL CLOSED (cage-match consensus): the sequence is REJECTED with
+    WRAP_SEAM so the IR repair loop rewrites it — never silently drive the
+    long way around."""
     a = q_of(kin, wrist_roll=kin.joints["wrist_roll"].lower + 0.05)
     b = q_of(kin, wrist_roll=kin.joints["wrist_roll"].upper - 0.05)
     v = gate.check_sequence([a, b])
+    assert not v.admitted
     assert any(r.code == Reason.WRAP_SEAM for r in v.reasons)
+    assert v.violating_step == 0
 
 
 def test_soft_band_scales_velocity(gate, kin):
@@ -367,34 +337,17 @@ def test_adversarial_corpus(gate, kin, acm):
         assert np.isfinite(v.min_distance_mm)
 
 
-def test_every_excluded_pair_exercised_near_contact(gate, kin, acm, spheres):
-    """Each ACM-excluded pair is driven to its measured closest approach and
-    the gate must stay silent about that pair there (the exclusion is doing
-    its job at the hard part of the workspace, not just at home)."""
-    rng = np.random.default_rng(23)
-    lo = np.array([kin.joints[n].lower for n in JOINT_ORDER])
-    hi = np.array([kin.joints[n].upper for n in JOINT_ORDER])
-    qs = rng.uniform(lo, hi, size=(2000, 6))
-    for entry in acm["excluded_pairs"]:
-        a, b = entry["pair"]
-        best_q, best_d = None, np.inf
-        for q in qs:
-            fr = kin.frames(q)
-            ca = (fr[a][:3, :3] @ np.array([s["center_m"] for s in spheres["links"][a]["spheres"]]).T).T + fr[a][:3, 3]
-            cb = (fr[b][:3, :3] @ np.array([s["center_m"] for s in spheres["links"][b]["spheres"]]).T).T + fr[b][:3, 3]
-            ra = np.array([s["radius_m"] for s in spheres["links"][a]["spheres"]])
-            rb = np.array([s["radius_m"] for s in spheres["links"][b]["spheres"]])
-            d = (np.linalg.norm(ca[:, None] - cb[None, :], axis=2)
-                 - ra[:, None] - rb[None, :]).min()
-            if d < best_d:
-                best_d, best_q = d, q
-        v = gate.check_pose(best_q)
-        flagged = {tuple(sorted(r.detail.get("pair", ())))
-                   for r in v.reasons if r.code == Reason.SELF_COLLISION_PAIR}
-        assert tuple(sorted((a, b))) not in flagged, (
-            f"excluded pair {a}|{b} flagged at its closest approach — "
-            "ACM not applied"
-        )
+def test_never_collided_pairs_stay_checked(acm):
+    """The cage-match's subtraction: pairs that never collided across the
+    20k sample are KEPT CHECKED (evidence recorded), never excluded —
+    sampling dusts C-space, it does not cover it, and the closest such pair
+    sat inside the hard margin."""
+    never = [e for e in acm["checked_pairs"]
+             if e["evidence"].get("never_collided_in_sample")]
+    assert never, "expected at least one never-collided-yet-checked pair"
+    for e in never:
+        assert e["evidence"]["graph_distance"] > 1
+
 
 
 # --- THE acceptance gate: timing with REAL pair semantics (Kelvin FATAL) ---
@@ -402,16 +355,18 @@ def test_every_excluded_pair_exercised_near_contact(gate, kin, acm, spheres):
 def test_timing_benchmark_real_pair_semantics(gate, kin):
     """RESEARCH's 20.5 µs figure used proxy pair semantics; the step-2 gate
     re-measures with the REAL checked-pair list and the REAL sphere set.
-    Budget: a full-workspace sweep (research's canonical 478-sample case)
-    must admit in ≤ 250 ms on CI hardware (design expectation ≈ 10 ms class;
-    the assert is generous, the printed number is the record)."""
-    # canonical admission case: a wide shoulder_pan sweep that ADMITS —
-    # timing a rejection would measure the early-exit path, not admission
-    # cost (the full-limit sweep rejects: pan extremes read ~8 mm from the
-    # base in sphere space).
+    Three honest measurements (cage-match: the first draft's labels oversold
+    an easy 1-DOF pan as "full-workspace" and timed per-pose on the same
+    cache-hot slice): (a) an ADMITTED wide pan sweep — the canonical chat
+    admission shape, not a workspace tour; (b) per-pose cost over RANDOM
+    in-limit poses across the workspace (mixed CLEAR/SOFT/HARD); (c) the
+    REJECT path on a violating sequence. Assert ceilings are deliberately
+    generous for CI hardware; the printed numbers are the record."""
+    # (a) admitted wide pan sweep — a single-DOF admission case, chosen
+    # because it admits end-to-end (the full-limit sweep rejects at the
+    # extremes); it is NOT a workspace tour and is not claimed to be one.
     a, b = np.zeros(6), np.zeros(6)
     a[0], b[0] = math.radians(-80), math.radians(80)
-
     t0 = time.perf_counter()
     verdict = gate.check_sequence([a, b])
     dt_admission = time.perf_counter() - t0
@@ -420,22 +375,60 @@ def test_timing_benchmark_real_pair_semantics(gate, kin):
         f"{[str(r) for r in verdict.reasons]}")
     assert verdict.n_samples > 400, "sweep too short to be a meaningful benchmark"
 
-    n = gate.samples_for_delta(b - a)
-    qs = kin.interpolate(a, b, n)
+    # (b) per-pose cost over RANDOM in-limit poses (mixed statuses, no
+    # cache-friendly correlation between consecutive poses)
+    rng = np.random.default_rng(41)
+    lo = np.array([kin.joints[n].lower for n in JOINT_ORDER])
+    hi = np.array([kin.joints[n].upper for n in JOINT_ORDER])
+    rand_qs = rng.uniform(lo, hi, size=(200, 6))
     t0 = time.perf_counter()
-    for q in qs[:100]:
+    for q in rand_qs:
         gate.check_pose(q)
-    per_pose = (time.perf_counter() - t0) / 100
+    per_pose = (time.perf_counter() - t0) / len(rand_qs)
 
-    print(f"\n[benchmark] admission full-pan sweep ({n} samples): "
-          f"{dt_admission*1000:.1f} ms; per-pose {per_pose*1e6:.1f} µs; "
+    # (c) the reject path (violating start) — cheap by design, but measured
+    # rather than assumed
+    bad = np.array(rand_qs[0]); bad[1] = -1.6
+    bad[2] = kin.joints["elbow_flex"].lower
+    bad[3] = kin.joints["wrist_flex"].lower
+    t0 = time.perf_counter()
+    rej = gate.check_sequence([bad, np.zeros(6)])
+    dt_reject = time.perf_counter() - t0
+    assert not rej.admitted
+
+    print(f"\n[benchmark] admitted ±80° 1-DOF pan sweep "
+          f"({verdict.n_samples} samples): {dt_admission*1000:.1f} ms; "
+          f"per-pose over 200 random workspace poses: {per_pose*1e6:.1f} µs; "
+          f"reject path: {dt_reject*1000:.2f} ms; "
           f"checked pairs: {len(gate.checked_pairs)}")
     assert dt_admission < 0.250, "admission blew the budget with real semantics"
     assert per_pose < 0.002, "streaming per-pose check too slow for 30 Hz"
-    assert verdict is not None
 
 
 # --- refusal on artifact drift (the constructor is a safety check too) -----
+
+def test_gate_refuses_acm_from_different_sphere_set(tmp_path):
+    """Chain of custody bake → spheres → ACM must be unbroken (cage-match:
+    regenerating spheres while keeping the old ACM previously slipped
+    through — the spheres hash was recorded but never verified)."""
+    spheres = json.loads(SPHERES_PATH.read_text())
+    spheres["links"]["base_link"]["spheres"][0]["radius_m"] += 1e-6
+    p = tmp_path / "spheres.json"
+    p.write_text(json.dumps(spheres))
+    with pytest.raises(RuntimeError, match="DIFFERENT sphere set"):
+        MotionGate(spheres_path=p)
+
+
+def test_gate_refuses_acm_that_drops_a_pair(tmp_path):
+    """The ACM must PARTITION the pair set — a pair absent from both lists
+    would silently never be checked (RuntimeError, and it survives -O)."""
+    acm = json.loads(ACM_PATH.read_text())
+    acm["checked_pairs"] = acm["checked_pairs"][1:]
+    p = tmp_path / "acm.json"
+    p.write_text(json.dumps(acm))
+    with pytest.raises(RuntimeError, match="partition"):
+        MotionGate(acm_path=p)
+
 
 def test_gate_refuses_mismatched_bake(tmp_path):
     """A sphere artifact generated from a DIFFERENT bake must be refused at

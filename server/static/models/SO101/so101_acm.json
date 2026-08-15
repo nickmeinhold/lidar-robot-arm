@@ -1,13 +1,12 @@
 {
  "provenance": {
   "generator": "server/scripts/sample_acm.py",
-  "spheres_sha256": "2c1945b2fe3bffe22361d6656cf4f06f570fda97a439f1dd7ffa85a32114c223",
+  "spheres_sha256": "621b6d97fa5b32a77b2e3cde2c88e45cb037071efa6963b284909b5f619959a8",
   "bake_sha256": "ae89383141ae6cce9b1df9b167dc911997e2760ff77aa6e9a49aa6e6f9a18b0f",
   "params": {
    "n_samples": 20000,
    "seed": 2,
-   "near_adjacent_rate": 0.9,
-   "hull_poses": 1500
+   "near_adjacent_rate": 0.9
   }
  },
  "excluded_pairs": [
@@ -19,9 +18,9 @@
    "reason": "parent_child_adjacent",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -49.0,
+    "min_gap_mm": -49.5,
     "collision_rate": 1.0,
-    "joint": "structural"
+    "graph_distance": 1
    }
   },
   {
@@ -32,9 +31,9 @@
    "reason": "parent_child_adjacent",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -37.0,
+    "min_gap_mm": -37.4,
     "collision_rate": 1.0,
-    "joint": "structural"
+    "graph_distance": 1
    }
   },
   {
@@ -45,9 +44,9 @@
    "reason": "parent_child_adjacent",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -38.5,
+    "min_gap_mm": -38.9,
     "collision_rate": 1.0,
-    "joint": "structural"
+    "graph_distance": 1
    }
   },
   {
@@ -58,9 +57,9 @@
    "reason": "parent_child_adjacent",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -51.5,
+    "min_gap_mm": -52.0,
     "collision_rate": 1.0,
-    "joint": "structural"
+    "graph_distance": 1
    }
   },
   {
@@ -71,9 +70,9 @@
    "reason": "parent_child_adjacent",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -54.8,
+    "min_gap_mm": -55.3,
     "collision_rate": 1.0,
-    "joint": "structural"
+    "graph_distance": 1
    }
   },
   {
@@ -84,8 +83,9 @@
    "reason": "near_adjacent_default_touching",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -24.4,
-    "collision_rate": 1.0
+    "min_gap_mm": -24.9,
+    "collision_rate": 1.0,
+    "graph_distance": 2
    }
   },
   {
@@ -96,22 +96,9 @@
    "reason": "parent_child_adjacent",
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -51.6,
+    "min_gap_mm": -52.1,
     "collision_rate": 1.0,
-    "joint": "structural"
-   }
-  },
-  {
-   "pair": [
-    "lower_arm_link",
-    "moving_jaw_so101_v1_link"
-   ],
-   "reason": "sampled_never_hull_proven",
-   "evidence": {
-    "n_samples": 20000,
-    "min_gap_mm": 5.7,
-    "collision_rate": 0.0,
-    "hull_poses": 1500
+    "graph_distance": 1
    }
   }
  ],
@@ -123,8 +110,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -63.0,
-    "collision_rate": 0.1296
+    "min_gap_mm": -63.4,
+    "collision_rate": 0.1303,
+    "graph_distance": 5,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -134,8 +123,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -64.6,
-    "collision_rate": 0.0822
+    "min_gap_mm": -65.1,
+    "collision_rate": 0.083,
+    "graph_distance": 3,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -145,8 +136,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -54.9,
-    "collision_rate": 0.0994
+    "min_gap_mm": -55.4,
+    "collision_rate": 0.0999,
+    "graph_distance": 6,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -156,8 +149,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -25.6,
-    "collision_rate": 0.0516
+    "min_gap_mm": -26.1,
+    "collision_rate": 0.0537,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -167,8 +162,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -62.3,
-    "collision_rate": 0.1265
+    "min_gap_mm": -62.7,
+    "collision_rate": 0.1272,
+    "graph_distance": 4,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -178,8 +175,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -5.0,
-    "collision_rate": 0.0397
+    "min_gap_mm": -5.5,
+    "collision_rate": 0.0493,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -189,8 +188,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -60.6,
-    "collision_rate": 0.1366
+    "min_gap_mm": -61.1,
+    "collision_rate": 0.1374,
+    "graph_distance": 4,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -200,8 +201,23 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -29.4,
-    "collision_rate": 0.0239
+    "min_gap_mm": -29.8,
+    "collision_rate": 0.0246,
+    "graph_distance": 3,
+    "never_collided_in_sample": false
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": 5.3,
+    "collision_rate": 0.0,
+    "graph_distance": 3,
+    "never_collided_in_sample": true
    }
   },
   {
@@ -211,8 +227,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -80.6,
-    "collision_rate": 0.2073
+    "min_gap_mm": -81.1,
+    "collision_rate": 0.2087,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -222,8 +240,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -57.5,
-    "collision_rate": 0.0859
+    "min_gap_mm": -58.0,
+    "collision_rate": 0.0872,
+    "graph_distance": 5,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -233,8 +253,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -40.9,
-    "collision_rate": 0.01
+    "min_gap_mm": -41.3,
+    "collision_rate": 0.0103,
+    "graph_distance": 4,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -244,8 +266,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -65.5,
-    "collision_rate": 0.1777
+    "min_gap_mm": -65.9,
+    "collision_rate": 0.1785,
+    "graph_distance": 3,
+    "never_collided_in_sample": false
    }
   },
   {
@@ -255,8 +279,10 @@
    ],
    "evidence": {
     "n_samples": 20000,
-    "min_gap_mm": -35.7,
-    "collision_rate": 0.087
+    "min_gap_mm": -36.2,
+    "collision_rate": 0.0885,
+    "graph_distance": 2,
+    "never_collided_in_sample": false
    }
   }
  ]

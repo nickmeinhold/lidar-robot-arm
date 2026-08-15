@@ -1,11 +1,15 @@
 """Offline sphere-cluster generator — spine step 2 (crucible DESIGN §2.4).
 
 Derives the SO-101 collision model from the SAME meshes the bake references:
-six k-means spheres per link, radius = per-cluster MAX vertex distance plus
-half the longest triangle edge in that cluster (RESEARCH: p99 radii leave up
-to 0.91% of geometry outside the model — unsound in the unsafe direction; the
-max rule + edge inflation gives provable vertex containment AND covers
-triangle bulge between spheres).
+per-link k-means spheres over a DENSIFIED surface cloud (sample spacing
+≤ DENSIFY_EDGE_M), radius = per-cluster MAX sample distance plus the grid's
+COVERING RADIUS, DENSIFY_EDGE_M/√3 — the distance bound from any point of a
+triangle to its nearest barycentric-grid sample (worst case: the circumcenter
+of an equilateral grid cell, h/√3). Containment of the continuous surface
+follows: every surface point is within h/√3 of a sample, and every sample is
+inside its cluster's max radius. (The research's own "half longest edge" rule
+was doubly wrong here: these CAD exports carry ~80 mm flat triangles, and
+h/2 under-covers a triangular grid — the cage-match caught the 0.23 mm hole.)
 
 The OUTPUT (`so101_spheres.json`) is a reviewed, committed artifact — a
 safety judgment with provenance — regenerated only deliberately:
@@ -22,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import struct
 import sys
 from pathlib import Path
@@ -87,12 +92,10 @@ DENSIFY_EDGE_M = 0.003  # sample the surface at ≤3 mm spacing
 
 
 def densify(tris: np.ndarray, max_edge: float = DENSIFY_EDGE_M) -> np.ndarray:
-    """(n,3,3) triangles → (N,3) surface point cloud with inter-point spacing
-    ≤ max_edge. Containment of THIS cloud + max_edge/2 radius inflation
-    contains the true surface — the sound version of the research's
-    'half longest edge' correction, needed because these CAD exports carry
-    large flat triangles (up to ~80 mm edges), not the sub-mm mesh the
-    research assumed."""
+    """(n,3,3) triangles → (N,3) surface point cloud with grid spacing
+    ≤ max_edge. Any point of any triangle lies within max_edge/√3 (the grid
+    covering radius) of some sample, so cloud-containment + a max_edge/√3
+    radius inflation contains the continuous surface."""
     a, b, c = tris[:, 0], tris[:, 1], tris[:, 2]
     longest = np.maximum(np.maximum(
         np.linalg.norm(a - b, axis=1),
@@ -138,7 +141,7 @@ def fit_link(tris: np.ndarray, k: int) -> tuple[list[dict], dict]:
     surface is provably inside the union."""
     pts = densify(tris)
     centers, labels = kmeans(pts, k, KMEANS_ITERS, KMEANS_SEED)
-    edge_inflation = DENSIFY_EDGE_M / 2.0
+    edge_inflation = DENSIFY_EDGE_M / math.sqrt(3.0)  # grid covering radius
 
     spheres = []
     for j in range(k):
@@ -181,6 +184,29 @@ def measure_levers(links: dict[str, list[dict]]) -> dict[str, float]:
     downstream = {n: [c for c in dict.fromkeys(v) if c in links]
                   for n, v in downstream.items()}
 
+    # Analytic pose-independent UPPER BOUND per joint (triangle inequality:
+    # rotations preserve norms, so distance from the joint origin to any
+    # downstream sphere surface ≤ Σ downstream joint-origin offsets + the
+    # sphere's own ‖center‖+radius). The sampled max below is an ESTIMATE
+    # used for reporting; the artifact's lever is max(bound, sampled) —
+    # in practice the bound — so the sweep bound truly upper-bounds.
+    bounds = {}
+    for i, name in enumerate(JOINT_ORDER):
+        best = 0.0
+        cum = 0.0
+        for k in range(i, len(JOINT_ORDER)):
+            nk = JOINT_ORDER[k]
+            if k > i:
+                cum += float(np.linalg.norm(
+                    kin.joints[nk].origin[:3, 3]))
+            link_name = kin.joints[nk].child_link
+            if link_name in links:
+                reach = max(
+                    float(np.linalg.norm(s_["center_m"]) + s_["radius_m"])
+                    for s_ in links[link_name])
+                best = max(best, cum + reach)
+        bounds[name] = best
+
     levers = {n: 0.0 for n in JOINT_ORDER}
     qs = rng.uniform(lo, hi, size=(LEVER_POSES, 6))
     for q in qs:
@@ -201,7 +227,10 @@ def measure_levers(links: dict[str, list[dict]]) -> dict[str, float]:
                     lever = perp + s["radius_m"]
                     if lever > levers[name]:
                         levers[name] = lever
-    return {n: round(v * 1000.0, 1) for n, v in levers.items()}
+    return (
+        {n: round(max(bounds[n], levers[n]) * 1000.0, 1) for n in JOINT_ORDER},
+        {n: round(levers[n] * 1000.0, 1) for n in JOINT_ORDER},
+    )
 
 
 def main() -> None:
@@ -220,8 +249,10 @@ def main() -> None:
               f"max r {max(s['radius_m'] for s in spheres)*1000:.1f} mm "
               f"(edge inflation {report['edge_inflation_m']*1000:.2f} mm)")
 
-    levers = measure_levers({n: e["spheres"] for n, e in links_out.items()})
-    print("levers_mm:", levers)
+    levers, levers_sampled = measure_levers(
+        {n: e["spheres"] for n, e in links_out.items()})
+    print("levers_mm (bound):", levers)
+    print("levers_mm (sampled estimate):", levers_sampled)
 
     # v0 table plane: the surface the base stands on = the base mesh's lowest
     # point in the base frame (the URDF origin is NOT the tabletop — the base
@@ -243,6 +274,7 @@ def main() -> None:
         },
         "links": links_out,
         "levers_mm": levers,
+        "levers_sampled_mm": levers_sampled,
         "base_min_z_m": base_min_z,
     }
     OUT_PATH.write_text(json.dumps(out, indent=1))
