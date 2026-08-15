@@ -136,9 +136,12 @@ def kmeans(points: np.ndarray, k: int, iters: int, seed: int) -> np.ndarray:
 
 
 def fit_link(tris: np.ndarray, k: int) -> tuple[list[dict], dict]:
-    """Six max-radius spheres over the DENSIFIED surface cloud. Radius =
-    per-cluster max distance + DENSIFY_EDGE_M/2, so the true (continuous)
-    surface is provably inside the union."""
+    """Per-link max-radius spheres over the DENSIFIED surface cloud.
+    Radius = per-cluster max sample distance + the grid covering radius
+    DENSIFY_EDGE_M/√3, so the true (continuous) surface is provably inside
+    the union (any triangle point is within h/√3 of a sample: acute cells
+    are bounded by the equilateral circumradius h/√3, obtuse cells by
+    h/2 < h/√3)."""
     pts = densify(tris)
     centers, labels = kmeans(pts, k, KMEANS_ITERS, KMEANS_SEED)
     edge_inflation = DENSIFY_EDGE_M / math.sqrt(3.0)  # grid covering radius
@@ -268,7 +271,7 @@ def main() -> None:
             "params": {
                 "k_default": K_DEFAULT, "k_per_link": K_PER_LINK,
                 "kmeans_iters": KMEANS_ITERS,
-                "kmeans_seed": KMEANS_SEED, "radius_rule": "max+edge/2",
+                "kmeans_seed": KMEANS_SEED, "radius_rule": "max+covering_radius(h/sqrt(3))",
                 "lever_poses": LEVER_POSES, "lever_seed": LEVER_SEED,
             },
         },

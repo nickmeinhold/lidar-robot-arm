@@ -5,12 +5,15 @@ The crucible's step-2 acceptance gate (DESIGN §3.2 + amendments 9.1.11,
 and a held-out oracle that does not share the sphere representation.
 
 Soundness architecture being verified here:
-  mesh ⊆ sphere-union (per link, proven by containment)  ⟹  a mesh-mesh
-  collision implies a sphere-sphere collision  ⟹  the gate cannot
-  false-negative on self-collision. The tests RE-VERIFY containment with
-  independent code (the verifier must not share the generator's failure
-  modes) and prove the ACM's excluded pairs with convex-hull LP feasibility
-  — an instrument that never touches spheres.
+  mesh ⊆ sphere-union (per link — constructive: every surface point is
+  within the densify grid's covering radius h/√3 of a sample, every sample
+  inside its cluster's max radius)  ⟹  a mesh self-collision implies a
+  sphere contact  ⟹  the gate cannot false-negative. The constructive
+  proof lives in the generator; the tests here CHECK it independently by
+  random surface sampling (a different method, so verifier and verified do
+  not share a blind spot) — a probabilistic check of a constructive claim,
+  not itself a proof. ACM exclusions are STRUCTURAL only (graph distance),
+  asserted directly against the artifact.
 """
 from __future__ import annotations
 
@@ -97,7 +100,7 @@ def test_levers_present_and_sane(spheres):
 
 # --- containment oracle (independent re-verification) ----------------------
 
-def test_mesh_containment_100_percent(spheres):
+def test_mesh_containment_independent_sampling(spheres):
     """THE soundness anchor, verified by a DIFFERENT method than the
     generator used (cage-match: a verifier sharing the generator's grid
     would share its blind spot). The generator fits a deterministic
@@ -226,6 +229,9 @@ def test_empty_sequence_rejected(gate):
 def test_single_frame_sequence_is_pose_check(gate, kin):
     v = gate.check_sequence([q_of(kin)])
     assert v.admitted
+    assert v.n_samples == 1
+    assert np.isfinite(v.min_distance_mm), \
+        "a one-frame certificate must report the real pose distance"
 
 
 def test_violating_start_rejected_at_step_zero(gate, kin):
@@ -287,10 +293,18 @@ def test_sampling_step_composes_multijoint_motion(gate):
     n_single = gate.samples_for_delta(
         np.array([math.radians(1.0), 0, 0, 0, 0, 0]))
     assert n_multi > n_single, "multi-joint motion must sample more densely"
-    # worst-case fixture: the sweep between adjacent samples stays under the
-    # sampling allowance
-    sweep_mm = gate.sweep_upper_bound_mm(dq / n_multi)
+    # the REAL step the gate takes: n samples ⟹ n−1 intervals of dq/(n−1)
+    # (round-1 of the cage-match caught the test proving dq/n — a smaller
+    # step than the gate actually takes)
+    sweep_mm = gate.sweep_upper_bound_mm(dq / (n_multi - 1))
     assert sweep_mm <= gate.sampling_allowance_mm + 1e-9
+    # edge case: total sweep just OVER an integer multiple of the allowance
+    target = 3.0 * gate.sampling_allowance_mm + 1e-6
+    dq_edge = np.zeros(6)
+    dq_edge[0] = target / gate.levers_mm["shoulder_pan"]
+    n_edge = gate.samples_for_delta(dq_edge)
+    assert gate.sweep_upper_bound_mm(dq_edge / (n_edge - 1)) \
+        <= gate.sampling_allowance_mm + 1e-9
 
 
 def test_derived_step_matches_research_regime(gate):
@@ -440,3 +454,43 @@ def test_gate_refuses_mismatched_bake(tmp_path):
     p.write_text(json.dumps(tampered))
     with pytest.raises(RuntimeError, match="DIFFERENT bake"):
         MotionGate(spheres_path=p)
+
+
+def test_shoulder_table_clearance_is_pose_invariant(gate, kin):
+    """shoulder_link's table exemption rests on 'its only DOF is pan about
+    the vertical axis' — verify the invariant instead of trusting the prose
+    (cage-match, Carnot): its lowest sphere-bottom must not vary across pan."""
+    lows = []
+    for pan in np.linspace(kin.joints["shoulder_pan"].lower,
+                           kin.joints["shoulder_pan"].upper, 25):
+        q = q_of(kin, shoulder_pan=float(pan))
+        w = gate._world_spheres(q)
+        o = gate._offsets["shoulder_link"]
+        r = gate._radii["shoulder_link"]
+        lows.append(float((w[o:o + len(r), 2] - r).min()))
+    # measured spread is ~16 nm (the URDF pan axis carries a ~3 µrad export
+    # tilt); 0.01 mm is the meaningful ceiling — far below every margin term
+    assert max(lows) - min(lows) < 1e-5, (
+        f"shoulder_link table clearance varies {1000*(max(lows)-min(lows)):.4f} mm "
+        "across pan — the exemption's stated invariant is false")
+
+
+def test_no_tunneling_through_sampled_segment(gate, kin):
+    """Falsifier #8 made executable: between two admitted samples the gap can
+    dip at most S/2 (both endpoints checked; g(t) ≥ min(g0,g1) − S/2). Build
+    the worst case the bound allows — a max-lever joint step exactly at the
+    sampling allowance — and verify the interior dip the model predicts
+    stays within the margin budget's sampling term."""
+    dq = np.zeros(6)
+    dq[0] = gate.sampling_allowance_mm / gate.levers_mm["shoulder_pan"]
+    a = q_of(kin)
+    b = a + dq
+    n = gate.samples_for_delta(dq)
+    qs = kin.interpolate(a, b, max(n, 9))  # denser than the gate would go
+    ga = gate.check_pose(a).min_distance_mm
+    gb = gate.check_pose(b).min_distance_mm
+    interior_min = min(gate.check_pose(q).min_distance_mm for q in qs)
+    sampling_term = gate.sampling_allowance_mm / 2.0
+    assert interior_min >= min(ga, gb) - sampling_term - 1e-6, (
+        f"interior gap dipped {min(ga, gb) - interior_min:.3f} mm below the "
+        f"endpoints — exceeds the budgeted S/2 = {sampling_term} mm")

@@ -1,7 +1,7 @@
 {
  "provenance": {
   "generator": "server/scripts/sample_acm.py",
-  "spheres_sha256": "621b6d97fa5b32a77b2e3cde2c88e45cb037071efa6963b284909b5f619959a8",
+  "spheres_sha256": "b87aa8ae196fecee938fa935b5c25138fc43fec7a60bf291a6794f2c47f580ff",
   "bake_sha256": "ae89383141ae6cce9b1df9b167dc911997e2760ff77aa6e9a49aa6e6f9a18b0f",
   "params": {
    "n_samples": 20000,

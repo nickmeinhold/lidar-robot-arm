@@ -226,8 +226,29 @@ class MotionGate:
     # --- sweep bound (amendment 10.1.3) -----------------------------------
 
     def sweep_upper_bound_mm(self, dq: np.ndarray) -> float:
-        """Upper bound on Cartesian sweep for joint delta dq (radians):
-        Σⱼ |Δθⱼ| · leverⱼ — multi-joint motion COMPOSES."""
+        """Upper bound on the RELATIVE Cartesian sweep for joint delta dq
+        (radians): Σⱼ |Δθⱼ| · leverⱼ (multi-joint motion composes —
+        amendment 10.1.3).
+
+        Why this bounds the PAIR-GAP change, not just one body's motion
+        (the cage-match's two-body attack, refuted): for links A and B on a
+        serial chain, rotation at a COMMON-ANCESTOR joint moves both
+        rigidly together — their gap is unchanged. Only joints on the chain
+        path BETWEEN A and B alter their relative pose, and each such
+        joint's contribution is ≤ |Δθⱼ| × (distance from its axis to the
+        farther body's spheres) ≤ leverⱼ. Summing over ALL joints
+        (a superset of the between-set) therefore bounds the gap change.
+        The table plane is static, so a single body's sweep bounds that
+        gap trivially.
+
+        Why the margin banks HALF the allowance (the monotone-dive attack,
+        refuted): both segment endpoints are checked ≥ hard margin. Along
+        the segment with total sweep S, |g(t)−g(0)| ≤ tS and
+        |g(t)−g(1)| ≤ (1−t)S, so g(t) ≥ (g0+g1−S)/2 ≥ min(g0,g1) − S/2 —
+        the interior can dip at most S/2 below the checked endpoints. A
+        "monotone approach spending the whole sweep" would leave the NEXT
+        sample below the margin, where it is rejected. Hence sampling
+        allowance = 2 × the budget's sampling term."""
         return float(np.abs(dq) @ self._lever_mm_vec)
 
     def samples_for_delta(self, dq: np.ndarray) -> int:
@@ -243,6 +264,8 @@ class MotionGate:
         if q.shape != (len(JOINT_ORDER),):
             raise ValueError(
                 f"pose must be shape ({len(JOINT_ORDER)},), got {q.shape}")
+        if not np.isfinite(q).all():
+            raise ValueError(f"pose contains non-finite values: {q}")
         reasons: list[GateReason] = []
 
         for i, name in enumerate(JOINT_ORDER):
@@ -324,6 +347,12 @@ class MotionGate:
             return SequenceVerdict(admitted=False, reasons=v0.reasons,
                                    violating_step=0,
                                    min_distance_mm=v0.min_distance_mm)
+        if len(frames) == 1:
+            # a one-frame certificate still reports the real pose verdict
+            # (distance + any SOFT reasons), not inf/empty
+            return SequenceVerdict(admitted=True, reasons=v0.reasons,
+                                   n_samples=1,
+                                   min_distance_mm=v0.min_distance_mm)
 
         for step in range(len(frames) - 1):
             a, b = frames[step], frames[step + 1]
@@ -346,6 +375,15 @@ class MotionGate:
             n = self.samples_for_delta(dq)
             n_total += n
             qs = self.kin.interpolate(a, b, n)
+            # the admission proof requires ENDPOINT-INCLUSIVE samples with
+            # n−1 intervals; verify the helper's contract rather than
+            # assuming it (segment boundaries are deliberately re-checked —
+            # cheap, and each keyframe is provably examined)
+            if not (np.allclose(qs[0], a) and np.allclose(qs[-1], b)
+                    and len(qs) == n):
+                raise RuntimeError(
+                    "interpolate() broke its endpoint-inclusive contract — "
+                    "the sampling proof is void")
             for q in qs:
                 v = self.check_pose(q)
                 if v.min_distance_mm < min_mm:
