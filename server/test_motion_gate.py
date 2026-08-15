@@ -433,3 +433,17 @@ def test_timing_benchmark_real_pair_semantics(gate, kin):
     assert dt_admission < 0.250, "admission blew the budget with real semantics"
     assert per_pose < 0.002, "streaming per-pose check too slow for 30 Hz"
     assert verdict is not None
+
+
+# --- refusal on artifact drift (the constructor is a safety check too) -----
+
+def test_gate_refuses_mismatched_bake(tmp_path):
+    """A sphere artifact generated from a DIFFERENT bake must be refused at
+    load — silently running over drifted geometry is the failure mode the
+    provenance hash exists to kill (amendment 9.1.8)."""
+    tampered = json.loads(SPHERES_PATH.read_text())
+    tampered["provenance"]["bake_sha256"] = "0" * 64
+    p = tmp_path / "spheres.json"
+    p.write_text(json.dumps(tampered))
+    with pytest.raises(RuntimeError, match="DIFFERENT bake"):
+        MotionGate(spheres_path=p)
