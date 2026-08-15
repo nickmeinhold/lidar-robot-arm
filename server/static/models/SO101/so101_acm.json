@@ -1,0 +1,263 @@
+{
+ "provenance": {
+  "generator": "server/scripts/sample_acm.py",
+  "spheres_sha256": "2c1945b2fe3bffe22361d6656cf4f06f570fda97a439f1dd7ffa85a32114c223",
+  "bake_sha256": "ae89383141ae6cce9b1df9b167dc911997e2760ff77aa6e9a49aa6e6f9a18b0f",
+  "params": {
+   "n_samples": 20000,
+   "seed": 2,
+   "near_adjacent_rate": 0.9,
+   "hull_poses": 1500
+  }
+ },
+ "excluded_pairs": [
+  {
+   "pair": [
+    "base_link",
+    "shoulder_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -49.0,
+    "collision_rate": 1.0,
+    "joint": "structural"
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -37.0,
+    "collision_rate": 1.0,
+    "joint": "structural"
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "wrist_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -38.5,
+    "collision_rate": 1.0,
+    "joint": "structural"
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "upper_arm_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -51.5,
+    "collision_rate": 1.0,
+    "joint": "structural"
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "wrist_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -54.8,
+    "collision_rate": 1.0,
+    "joint": "structural"
+   }
+  },
+  {
+   "pair": [
+    "moving_jaw_so101_v1_link",
+    "wrist_link"
+   ],
+   "reason": "near_adjacent_default_touching",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -24.4,
+    "collision_rate": 1.0
+   }
+  },
+  {
+   "pair": [
+    "shoulder_link",
+    "upper_arm_link"
+   ],
+   "reason": "parent_child_adjacent",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -51.6,
+    "collision_rate": 1.0,
+    "joint": "structural"
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "reason": "sampled_never_hull_proven",
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": 5.7,
+    "collision_rate": 0.0,
+    "hull_poses": 1500
+   }
+  }
+ ],
+ "checked_pairs": [
+  {
+   "pair": [
+    "base_link",
+    "gripper_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -63.0,
+    "collision_rate": 0.1296
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "lower_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -64.6,
+    "collision_rate": 0.0822
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "moving_jaw_so101_v1_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -54.9,
+    "collision_rate": 0.0994
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "upper_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -25.6,
+    "collision_rate": 0.0516
+   }
+  },
+  {
+   "pair": [
+    "base_link",
+    "wrist_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -62.3,
+    "collision_rate": 0.1265
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "lower_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -5.0,
+    "collision_rate": 0.0397
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "shoulder_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -60.6,
+    "collision_rate": 0.1366
+   }
+  },
+  {
+   "pair": [
+    "gripper_link",
+    "upper_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -29.4,
+    "collision_rate": 0.0239
+   }
+  },
+  {
+   "pair": [
+    "lower_arm_link",
+    "shoulder_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -80.6,
+    "collision_rate": 0.2073
+   }
+  },
+  {
+   "pair": [
+    "moving_jaw_so101_v1_link",
+    "shoulder_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -57.5,
+    "collision_rate": 0.0859
+   }
+  },
+  {
+   "pair": [
+    "moving_jaw_so101_v1_link",
+    "upper_arm_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -40.9,
+    "collision_rate": 0.01
+   }
+  },
+  {
+   "pair": [
+    "shoulder_link",
+    "wrist_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -65.5,
+    "collision_rate": 0.1777
+   }
+  },
+  {
+   "pair": [
+    "upper_arm_link",
+    "wrist_link"
+   ],
+   "evidence": {
+    "n_samples": 20000,
+    "min_gap_mm": -35.7,
+    "collision_rate": 0.087
+   }
+  }
+ ]
+}
