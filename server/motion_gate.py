@@ -119,7 +119,14 @@ class SequenceVerdict:
 
 class MotionGate:
     """Construct once over the committed artifacts; ask it about poses and
-    sequences. Thread-safe for reads (all state is immutable after init)."""
+    sequences. Thread-safe for reads (all state is immutable after init).
+
+    KNOWN LIMITATION (accepted tradeoff, v1): ACM exclusions operate at
+    LINK granularity — an excluded (structurally adjacent) pair is never
+    flagged, wherever on the links contact occurs. Mitigations: reactive
+    PRESENT_LOAD cutoff is the PRIMARY safety layer above this preventive
+    one; EEPROM range limits; shadow-mode contact log. Sphere-level
+    interface masks are the named v2 successor."""
 
     def __init__(
         self,
@@ -154,6 +161,23 @@ class MotionGate:
                 "regenerate the ACM after any sphere regeneration (the chain "
                 "bake → spheres → ACM must be unbroken)")
 
+        # premises of the containment theorem, enforced at load (r7): the
+        # hash chain proves custody, not that the artifact was built under
+        # the law the proof needs — inflation must be the recorded densify
+        # grid's covering radius and sphere counts must match recorded K
+        params = spheres["provenance"]["params"]
+        want_inflation = float(params["densify_edge_m"]) / math.sqrt(3.0)
+        for n, entry in spheres["links"].items():
+            if abs(entry["edge_inflation_m"] - want_inflation) > 1e-9:
+                raise RuntimeError(
+                    f"{n}: edge inflation {entry['edge_inflation_m']} != "
+                    f"covering radius {want_inflation:.6f} — artifact built "
+                    "under a different radius law")
+            want_k = params["k_per_link"].get(n, params["k_default"])
+            if len(entry["spheres"]) != want_k:
+                raise RuntimeError(
+                    f"{n}: {len(entry['spheres'])} spheres vs recorded K "
+                    f"{want_k} — artifact/params drift")
         self.links: list[str] = list(spheres["links"])
         self._centers = {n: np.array([s["center_m"] for s in e["spheres"]])
                          for n, e in spheres["links"].items()}
@@ -310,8 +334,12 @@ class MotionGate:
         joint's contribution is ≤ |Δθⱼ| × (distance from its axis to the
         farther body's spheres) ≤ leverⱼ. Summing over ALL joints
         (a superset of the between-set) therefore bounds the gap change.
-        The table plane is static, so a single body's sweep bounds that
-        gap trivially.
+        The table plane is static, so its gap change is bounded by the
+        moving link's own displacement — which is ≤ Σ over its ANCESTOR
+        joints of |Δθⱼ| × (distance from that axis to the link's spheres)
+        ≤ Σⱼ |Δθⱼ|·leverⱼ, the same bound (each lever majorizes the
+        distance to every downstream sphere). One allowance covers both
+        gap families.
 
         Why the margin banks HALF the allowance (the monotone-dive attack,
         refuted): both segment endpoints are checked ≥ hard margin. Along

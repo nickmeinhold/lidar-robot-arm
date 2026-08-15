@@ -11,6 +11,7 @@
    "kmeans_iters": 60,
    "kmeans_seed": 42,
    "radius_rule": "max+covering_radius(h/sqrt(3))",
+   "densify_edge_m": 0.003,
    "lever_poses": 3000,
    "lever_seed": 1
   }

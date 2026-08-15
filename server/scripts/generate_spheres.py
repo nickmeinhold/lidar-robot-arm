@@ -258,6 +258,10 @@ def measure_levers(
 def main() -> None:
     bake_bytes = (MODEL_DIR / "so101_urdf.json").read_bytes()
     meshes = load_link_meshes(MODEL_DIR)
+    # a typo'd K_PER_LINK key would silently fall back to K_DEFAULT
+    unknown = set(K_PER_LINK) - set(meshes)
+    if unknown:
+        raise RuntimeError(f"K_PER_LINK names unknown links: {unknown}")
     links_out: dict[str, dict] = {}
     for name, tris in meshes.items():
         k = K_PER_LINK.get(name, K_DEFAULT)
@@ -290,7 +294,9 @@ def main() -> None:
             "params": {
                 "k_default": K_DEFAULT, "k_per_link": K_PER_LINK,
                 "kmeans_iters": KMEANS_ITERS,
-                "kmeans_seed": KMEANS_SEED, "radius_rule": "max+covering_radius(h/sqrt(3))",
+                "kmeans_seed": KMEANS_SEED,
+                "radius_rule": "max+covering_radius(h/sqrt(3))",
+                "densify_edge_m": DENSIFY_EDGE_M,
                 "lever_poses": LEVER_POSES, "lever_seed": LEVER_SEED,
             },
         },
