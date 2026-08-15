@@ -400,20 +400,31 @@ def test_timing_benchmark_real_pair_semantics(gate, kin):
         gate.check_pose(q)
     per_pose = (time.perf_counter() - t0) / len(rand_qs)
 
-    # (c) the reject path (violating start) — cheap by design, but measured
-    # rather than assumed
+    # (c) BOTH reject shapes (cage-match round 3: a start-reject is one
+    # check_pose; a LATE reject that dies deep in the sweep costs nearly a
+    # full admission — time both, never let the cheap one stand in)
     bad = np.array(rand_qs[0]); bad[1] = -1.6
     bad[2] = kin.joints["elbow_flex"].lower
     bad[3] = kin.joints["wrist_flex"].lower
     t0 = time.perf_counter()
     rej = gate.check_sequence([bad, np.zeros(6)])
-    dt_reject = time.perf_counter() - t0
+    dt_reject_start = time.perf_counter() - t0
     assert not rej.admitted
+    # late reject: start CLEAR, end HARD — dies deep into the interpolation
+    late_end = q_of(kin, shoulder_lift=-1.6,
+                    elbow_flex=kin.joints["elbow_flex"].lower,
+                    wrist_flex=kin.joints["wrist_flex"].lower)
+    t0 = time.perf_counter()
+    rej_late = gate.check_sequence([q_of(kin), late_end])
+    dt_reject_late = time.perf_counter() - t0
+    assert not rej_late.admitted
+    assert dt_reject_late < 0.250, "late reject blew the admission budget"
 
     print(f"\n[benchmark] admitted ±80° 1-DOF pan sweep "
           f"({verdict.n_samples} samples): {dt_admission*1000:.1f} ms; "
           f"per-pose over 200 random workspace poses: {per_pose*1e6:.1f} µs; "
-          f"reject path: {dt_reject*1000:.2f} ms; "
+          f"start-reject: {dt_reject_start*1000:.2f} ms; "
+          f"late-reject: {dt_reject_late*1000:.1f} ms; "
           f"checked pairs: {len(gate.checked_pairs)}")
     assert dt_admission < 0.250, "admission blew the budget with real semantics"
     assert per_pose < 0.002, "streaming per-pose check too slow for 30 Hz"

@@ -354,6 +354,8 @@ class MotionGate:
                                    n_samples=1,
                                    min_distance_mm=v0.min_distance_mm)
 
+        worst_soft: tuple[GateReason, ...] = ()
+        worst_step = -1
         for step in range(len(frames) - 1):
             a, b = frames[step], frames[step + 1]
             dq = b - a
@@ -373,21 +375,32 @@ class MotionGate:
                     violating_step=step, n_samples=n_total,
                     min_distance_mm=min_mm)
             n = self.samples_for_delta(dq)
-            n_total += n
+            # exact pose accounting: each segment re-checks its start pose
+            # (already checked as the previous segment's end), so count it once
+            n_total += n if step == 0 else n - 1
             qs = self.kin.interpolate(a, b, n)
             # the admission proof requires ENDPOINT-INCLUSIVE samples with
             # n−1 intervals; verify the helper's contract rather than
             # assuming it (segment boundaries are deliberately re-checked —
             # cheap, and each keyframe is provably examined)
-            if not (np.allclose(qs[0], a) and np.allclose(qs[-1], b)
-                    and len(qs) == n):
+            # the half-sweep proof needs endpoint-inclusive samples AND
+            # UNIFORM intervals of (b−a)/(n−1) — a monotone but non-uniform
+            # partition could spend the whole sweep in one gap (cage-match
+            # round 3); verify the winding, not just the terminals
+            diffs = np.diff(qs, axis=0)
+            if not (len(qs) == n and np.allclose(qs[0], a)
+                    and np.allclose(qs[-1], b)
+                    and np.allclose(diffs, dq / (n - 1))):
                 raise RuntimeError(
-                    "interpolate() broke its endpoint-inclusive contract — "
-                    "the sampling proof is void")
+                    "interpolate() broke its uniform endpoint-inclusive "
+                    "contract — the sampling proof is void")
             for q in qs:
                 v = self.check_pose(q)
                 if v.min_distance_mm < min_mm:
                     min_mm = v.min_distance_mm
+                    if v.status == GateStatus.SOFT:
+                        worst_soft = v.reasons
+                        worst_step = step
                 if v.status == GateStatus.HARD:
                     return SequenceVerdict(
                         admitted=False,
@@ -395,5 +408,11 @@ class MotionGate:
                         violating_step=step,
                         n_samples=n_total, min_distance_mm=min_mm)
 
+        if worst_soft:
+            # telemetry fidelity (cage-match round 3): an admitted-but-SOFT
+            # path reports its worst sample's reasons + step for shadow mode
+            reasons.extend(GateReason(r.code, {**r.detail,
+                                               "worst_step": worst_step})
+                           for r in worst_soft)
         return SequenceVerdict(admitted=True, reasons=tuple(reasons),
                                n_samples=n_total, min_distance_mm=min_mm)

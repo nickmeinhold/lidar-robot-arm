@@ -86,7 +86,8 @@
     "min_gap_mm": -24.9,
     "collision_rate": 1.0,
     "graph_distance": 2
-   }
+   },
+   "justification": "jaw pivots on the gripper motor bolted into the wrist bracket; geometries interleave by construction at every jaw angle"
   },
   {
    "pair": [

@@ -4,13 +4,14 @@ Pair policy with receipts, STRUCTURAL exclusions only:
 
 - ``parent_child_adjacent`` (kinematic-graph distance 1): joined by a joint;
   contact at the joint is structural, not a collision to prevent.
-- ``near_adjacent_default_touching`` (graph distance 2, AND measured touching
-  in ≥90% of sampled poses): grandchild geometry that is always-touching by
-  construction (MoveIt's "Adjacent/Default" category, e.g. wrist|moving_jaw).
-  BOTH conditions are required — a distant pair the sphere model reads as
-  ≥90%-touching is evidence the model is broken for that pair, and the build
-  FAILS LOUDLY rather than excluding it (rate alone must never license
-  not-checking).
+- ``near_adjacent_default_touching``: an ALLOWLISTED grandchild pair whose
+  interpenetration is mechanically structural, confirmed by measured ≥90%
+  touching. The allowlist is the load-bearing guard (cage-match round 3):
+  graph distance 2 alone is NOT a license — base|upper_arm is also d=2, and
+  a future sphere regen that fattens its contact rate past 90% must FAIL
+  the build loudly, never silently exclude the very pinch pair the K=12
+  base model exists to protect. Rate confirms the allowlist; it never
+  creates an exclusion.
 
 Pairs that never collided across the sample are KEPT CHECKED. The cage-match
 killed the former ``sampled_never_hull_proven`` category: per-pose convex-hull
@@ -43,6 +44,12 @@ OUT_PATH = MODEL_DIR / "so101_acm.json"
 N_SAMPLES = 20_000
 SEED = 2
 NEAR_ADJACENT_RATE = 0.90
+# The ONLY grandchild pair whose exclusion is mechanically justified: the
+# moving jaw pivots on the gripper motor which is bolted INTO the wrist
+# bracket — jaw-base and wrist geometry interleave by construction at every
+# jaw angle (measured −24.9 mm, 100% of poses). Any other d=2 pair reaching
+# the rate threshold is a broken sphere model, not a new weld.
+NEAR_ADJACENT_ALLOWLIST = {("moving_jaw_so101_v1_link", "wrist_link")}
 
 
 def link_graph_distances(bake: dict, names: list[str]) -> dict[tuple[str, str], int]:
@@ -120,16 +127,27 @@ def main() -> None:
         if d == 1:
             excluded.append({"pair": list(p), "reason": "parent_child_adjacent",
                              "evidence": ev})
-        elif d == 2 and rate >= NEAR_ADJACENT_RATE:
+        elif p in NEAR_ADJACENT_ALLOWLIST and rate >= NEAR_ADJACENT_RATE:
             excluded.append({"pair": list(p),
                              "reason": "near_adjacent_default_touching",
-                             "evidence": ev})
+                             "evidence": ev,
+                             "justification": (
+                                 "jaw pivots on the gripper motor bolted into "
+                                 "the wrist bracket; geometries interleave by "
+                                 "construction at every jaw angle")})
+        elif p in NEAR_ADJACENT_ALLOWLIST:
+            raise RuntimeError(
+                f"allowlisted near-adjacent pair {p} measured only "
+                f"{rate:.0%} touching — the mechanical justification no "
+                "longer matches the model; review before building an ACM")
         elif rate >= NEAR_ADJACENT_RATE:
             raise RuntimeError(
-                f"pair {p} reads {rate:.0%} colliding at graph distance {d} — "
-                "a DISTANT pair the sphere model says is always touching means "
-                "the model is broken for that pair; refusing to build an ACM "
-                "over it (rate alone never licenses not-checking)")
+                f"pair {p} (graph distance {d}) reads {rate:.0%} colliding "
+                "but is NOT on the near-adjacent allowlist — a fattened "
+                "sphere model must never silently un-check a pinch pair; "
+                "fix the model or make the mechanical case for the "
+                "allowlist (cage-match round 3: the d==2+rate rule was a "
+                "trapdoor for base|upper_arm)")
         else:
             note = {"never_collided_in_sample": hits[p] == 0}
             checked.append({"pair": list(p), "evidence": {**ev, **note}})
