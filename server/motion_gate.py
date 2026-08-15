@@ -236,6 +236,21 @@ class MotionGate:
         if float(cfg["soft_band_extra_mm"]) <= 0 \
                 or float(budget["sampling"]["value"]) <= 0:
             raise RuntimeError("non-positive soft band / sampling term")
+        # amendment 9.1.8 as a DOOR, not just a test (cage-match r6): the
+        # lever-coupled terms must cover their artifact-derived minimums —
+        # a regen that lifts the lever, or a config edit that shrinks a
+        # term, is refused here rather than discovered in review
+        lever_pan = float(spheres["levers_mm"]["shoulder_pan"])
+        enc_min = math.radians(360.0 / 4096.0) * lever_pan
+        backlash_min = math.radians(0.5) * lever_pan
+        if float(budget["encoder_quantization"]["value"]) < enc_min - 1e-9:
+            raise RuntimeError(
+                f"encoder_quantization term below artifact-derived minimum "
+                f"{enc_min:.3f} mm (lever {lever_pan} mm/rad)")
+        if float(budget["backlash"]["value"]) < backlash_min - 1e-9:
+            raise RuntimeError(
+                f"backlash term below artifact-derived minimum "
+                f"{backlash_min:.3f} mm (±0.5° × lever {lever_pan} mm/rad)")
         self.hard_margin_mm: float = float(
             sum(t["value"] for t in budget.values()))
         self.soft_band_mm: float = self.hard_margin_mm + float(
@@ -332,6 +347,10 @@ class MotionGate:
                     "joint": name, "value_rad": float(q[i]),
                     "limits_rad": [float(self._lo[i]), float(self._hi[i])]}))
 
+        # FK is total (pure trig over all reals), so geometry is evaluated
+        # even for out-of-limit poses — the verdict then carries BOTH the
+        # JOINT_LIMIT reason and the geometric picture at the illegal pose,
+        # which the repair loop wants; there is no numeric hazard to dodge.
         world = self._world_spheres(q)
         gaps = self._min_gaps(world)
         k = int(gaps.argmin())
@@ -465,9 +484,12 @@ class MotionGate:
                         worst_soft = v.reasons
                         worst_step = step
                 if v.status == GateStatus.HARD:
+                    tail = [GateReason(r.code,
+                                       {**r.detail, "worst_step": worst_step})
+                            for r in worst_soft]
                     return SequenceVerdict(
                         admitted=False,
-                        reasons=tuple(list(v.reasons) + reasons),
+                        reasons=tuple(list(v.reasons) + reasons + tail),
                         violating_step=step,
                         n_samples=n_total, min_distance_mm=min_mm)
 

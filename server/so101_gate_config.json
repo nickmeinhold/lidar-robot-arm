@@ -6,8 +6,8 @@
       "provenance": "derived from the ARTIFACT, not research prose (amendment 9.1.8): 4096 ticks/360deg = 0.088 deg x 8.88 mm/deg (so101_spheres.json lever bound 509 mm/rad); test_encoder_term_tracks_artifact_lever pins the coupling"
     },
     "backlash": {
-      "value": 4.0,
-      "provenance": "estimate: +/-0.5 deg gear backlash x worst lever; SHADOW-MEASURE on this arm (step 4)"
+      "value": 4.5,
+      "provenance": "estimate: +/-0.5 deg gear backlash x 8.88 mm/deg (ARTIFACT lever bound 509 mm/rad, ceiled — cage-match r6 caught the ghost-lever sibling of the r4 encoder fix); SHADOW-MEASURE on this arm (step 4). Load-time door: the gate refuses a config whose encoder/backlash terms undershoot their artifact-derived minimums."
     },
     "tracking_overshoot": {
       "value": 3.0,

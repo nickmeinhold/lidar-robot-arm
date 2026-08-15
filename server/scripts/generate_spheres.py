@@ -171,7 +171,9 @@ def fit_link(tris: np.ndarray, k: int) -> tuple[list[dict], dict]:
     return spheres, report
 
 
-def measure_levers(links: dict[str, list[dict]]) -> dict[str, float]:
+def measure_levers(
+    links: dict[str, list[dict]],
+) -> tuple[dict[str, float], dict[str, float]]:
     """Per-joint lever arm: max perpendicular distance from the joint's axis
     to any DOWNSTREAM sphere surface, over sampled poses (RESEARCH Q2's
     method, re-derived from THIS sphere set per amendment 9.1.8)."""
@@ -198,6 +200,15 @@ def measure_levers(links: dict[str, list[dict]]) -> dict[str, float]:
     # sphere's own ‖center‖+radius). The sampled max below is an ESTIMATE
     # used for reporting; the artifact's lever is max(bound, sampled) —
     # in practice the bound — so the sweep bound truly upper-bounds.
+    # structural invariant that kills a thrice-raised review claim: every
+    # sphere-bearing link except the base must be some JOINT_ORDER joint's
+    # child, or the analytic bound would silently not cover it
+    joint_children = {kin.joints[n].child_link for n in JOINT_ORDER}
+    uncovered = set(links) - joint_children - {"base_link"}
+    if uncovered:
+        raise RuntimeError(
+            f"sphere-bearing links not covered by the analytic lever bound: "
+            f"{uncovered} — extend the bound before trusting the sweep proof")
     bounds = {}
     for i, name in enumerate(JOINT_ORDER):
         best = 0.0
