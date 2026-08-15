@@ -236,7 +236,10 @@ def measure_levers(links: dict[str, list[dict]]) -> dict[str, float]:
                     if lever > levers[name]:
                         levers[name] = lever
     return (
-        {n: round(max(bounds[n], levers[n]) * 1000.0, 1) for n in JOINT_ORDER},
+        # an upper bound must be CEILed to the 0.1 mm grain — rounding a
+        # claimed supremum down (even 0.05 mm) stains the sweep lemma
+        {n: math.ceil(max(bounds[n], levers[n]) * 10000.0) / 10.0
+         for n in JOINT_ORDER},
         {n: round(levers[n] * 1000.0, 1) for n in JOINT_ORDER},
     )
 

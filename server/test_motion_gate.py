@@ -450,9 +450,10 @@ def test_timing_benchmark_real_pair_semantics(gate, kin):
     assert dt_reject_late < 0.250, "late reject blew the admission budget"
     # PROVE it died late: n_samples now counts EXECUTED checks, so a
     # genuinely-late rejection must have burned a deep fraction of the path
-    assert rej_late.n_samples > 100, (
-        f"'late' reject executed only {rej_late.n_samples} checks — "
-        "it is wearing the late robe over an early exit")
+    planned = gate.samples_for_delta(late_end - q_of(kin))
+    assert rej_late.n_samples > 0.5 * planned, (
+        f"'late' reject executed only {rej_late.n_samples} of ~{planned} "
+        "planned checks — an early-middle exit in a late cloak")
     assert rej.n_samples <= 2, "start-reject should exit almost immediately"
     assert len(gate.checked_pairs) == 14, (
         "checked-pair count drifted — timing numbers are not comparable")
@@ -502,6 +503,45 @@ def test_gate_refuses_mismatched_bake(tmp_path):
     p.write_text(json.dumps(tampered))
     with pytest.raises(RuntimeError, match="DIFFERENT bake"):
         MotionGate(spheres_path=p)
+
+
+def test_stl_loader_against_independent_parse(spheres):
+    """The containment verifier varies its sampling method but shared the
+    generator's STL loader — a misparse would blind both (cage-match r5).
+    Spot-parse one mesh with INDEPENDENT struct code and cross-check
+    triangle count, byte-size arithmetic, and the vertex set."""
+    import struct
+    from server.scripts.generate_spheres import read_stl
+    path = MODEL_DIR / "assets" / "moving_jaw_so101_v1.stl"
+    raw = path.read_bytes()
+    (n,) = struct.unpack_from("<I", raw, 80)
+    assert len(raw) == 84 + n * 50, "binary STL size arithmetic broken"
+    own = np.array([
+        struct.unpack_from("<9f", raw, 84 + i * 50 + 12)
+        for i in range(n)
+    ]).reshape(n, 3, 3)
+    theirs = read_stl(path)
+    assert theirs.shape == (n, 3, 3)
+    assert np.allclose(own, theirs), "generator's STL parse diverges"
+
+
+def test_pose_verdict_names_the_governor(gate, kin):
+    """When the table governs, the verdict says so (cage-match r5: the
+    nearest_pair field alone sent repair current to the wrong terminal)."""
+    q = q_of(kin, shoulder_pan=0.703, shoulder_lift=1.741, elbow_flex=-0.159,
+             wrist_flex=0.149, wrist_roll=2.122)
+    v = gate.check_pose(q)
+    assert v.governing == "table"
+    clear = gate.check_pose(q_of(kin))
+    assert clear.governing == "self_collision"
+
+
+def test_table_exemptions_are_gate_policy(gate):
+    """exempt_links must be a subset of the gate's own allowlist — a config
+    edit must not silently darken the half-space for a link (r5: the ACM
+    door was sealed while its twin sat on the latch)."""
+    import server.motion_gate as mg
+    assert gate.table_exempt <= mg.TABLE_EXEMPT_ALLOWLIST
 
 
 def test_shoulder_table_clearance_is_pose_invariant(gate, kin):

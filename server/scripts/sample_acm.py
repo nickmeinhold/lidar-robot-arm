@@ -23,6 +23,16 @@ policy, forever. Subtraction over certification.
 
     python -m server.scripts.sample_acm
 
+NAMED TRADEOFF (cage-match r5, accepted): exclusions operate at LINK
+granularity, as in MoveIt — a parent-child exclusion silences every
+sphere-pair between those links, including hypothetical contact loci away
+from the joint interface. Sphere-level interface masks are a v2 research
+item; v1's mitigations for the adjacent-fold class are the EEPROM range
+limits and the reactive PRESENT_LOAD cutoff (the PRIMARY safety layer —
+the crucible's defense-in-depth puts the dumb reactive guard above this
+smart preventive one), plus shadow mode's physical-contact log as the
+instrument that would surface a real adjacent-pair strike.
+
 Output ``so101_acm.json`` is a reviewed, committed artifact pinned to the
 sphere set + bake it was measured against.
 """

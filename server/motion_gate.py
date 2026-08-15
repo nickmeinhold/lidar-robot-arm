@@ -53,6 +53,16 @@ LIMIT_EPSILON_RAD = 1e-9
 # refused — partition alone is necessary, not sufficient (cage-match r4).
 NEAR_ADJACENT_ALLOWLIST = {("moving_jaw_so101_v1_link", "wrist_link")}
 
+# Table-exemption policy, gate-owned for the same reason as the ACM
+# allowlist (cage-match r5: config alone was an unguarded twin door — adding
+# a link to exempt_links would silently darken the half-space for it).
+# base_link: bolted to the table. shoulder_link: its only DOF is pan about
+# the vertical axis, so its clearance is pose-invariant (tested, ~16 nm
+# spread) — but NOTE it sits INSIDE the hard margin by construction (~+6 mm
+# static), so this is a structural-geometry acceptance, not a reachability
+# proof; re-review if step 3's measured table height moves the plane.
+TABLE_EXEMPT_ALLOWLIST = {"base_link", "shoulder_link"}
+
 MODEL_DIR = Path(__file__).parent / "static" / "models" / "SO101"
 SPHERES_PATH = MODEL_DIR / "so101_spheres.json"
 ACM_PATH = MODEL_DIR / "so101_acm.json"
@@ -91,10 +101,11 @@ class GateReason:
 @dataclass(frozen=True)
 class PoseVerdict:
     status: GateStatus
-    min_distance_mm: float
-    nearest_pair: tuple[str, str] | None
+    min_distance_mm: float          # the GOVERNING clearance (self or table)
+    nearest_pair: tuple[str, str] | None  # nearest SELF-collision pair, always
     velocity_scale: float
     reasons: tuple[GateReason, ...]
+    governing: str = "self_collision"     # "self_collision" | "table"
 
 
 @dataclass(frozen=True)
@@ -202,6 +213,16 @@ class MotionGate:
         self._ia = np.array(ia)
         self._ib = np.array(ib)
         self._rsum = np.array(rr)
+        if not self._ia.size:
+            raise RuntimeError(
+                "ACM leaves ZERO sphere-pair terms to check — refusing to "
+                "construct a gate that can never see a collision")
+        for n in self.links:
+            if not (np.isfinite(self._centers[n]).all()
+                    and np.isfinite(self._radii[n]).all()):
+                raise RuntimeError(f"non-finite sphere data for {n}")
+        if not all(np.isfinite(v) and v > 0 for v in self.levers_mm.values()):
+            raise RuntimeError("non-finite/non-positive lever in artifact")
 
         budget = cfg["margin_budget_mm"]
         required_terms = {"encoder_quantization", "backlash",
@@ -231,6 +252,11 @@ class MotionGate:
             float(table["height_m"]) if table["height_m"] is not None
             else float(spheres["base_min_z_m"]))
         self.table_exempt: set[str] = set(table["exempt_links"])
+        if not self.table_exempt <= TABLE_EXEMPT_ALLOWLIST:
+            raise RuntimeError(
+                f"table exempt_links {self.table_exempt - TABLE_EXEMPT_ALLOWLIST} "
+                "not on the gate's exemption allowlist — a config edit must "
+                "not silently darken the half-space for a link")
 
         self._lever_mm_vec = np.array(
             [self.levers_mm[n] for n in JOINT_ORDER])
@@ -360,7 +386,9 @@ class MotionGate:
         return PoseVerdict(status=status,
                            min_distance_mm=round(governing_mm, 2),
                            nearest_pair=nearest, velocity_scale=scale,
-                           reasons=tuple(reasons))
+                           reasons=tuple(reasons),
+                           governing=("table" if table_mm < min_mm
+                                      else "self_collision"))
 
     def check_sequence(self, keyframes: list[np.ndarray]) -> SequenceVerdict:
         """All-or-nothing admission over the fully-interpolated sequence at
