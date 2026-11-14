@@ -1,0 +1,309 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>Pi ↔ Waveshare UART Wiring</title>
+<style>
+  :root {
+    --bg: #F1F2EE; --panel: #FAFBF8; --ink: #1D2420; --muted: #5C6660;
+    --board: #2F6E4F; --board-edge: #24543D; --pad: #C9963F; --silk: #E9EFE9;
+    --tx: #D97A2E; --rx: #3E7DC0; --gnd: #2A2E2C;
+    --danger: #C2413A; --danger-bg: #F7E8E6;
+    --ok-bg: #E4EDE6; --rule: #D4D9D2; --chip-bg: #E8EBE5;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #161B18; --panel: #1F2622; --ink: #E4E9E4; --muted: #93A099;
+    --board: #2F6E4F; --board-edge: #3C8862; --pad: #D8A94E; --silk: #DCE6DC;
+    --tx: #E89050; --rx: #6AA6DC; --gnd: #C9CFC9;
+    --danger: #E06A62; --danger-bg: #38221F;
+    --ok-bg: #223026; --rule: #333B35; --chip-bg: #28302B;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #161B18; --panel: #1F2622; --ink: #E4E9E4; --muted: #93A099;
+    --board: #2F6E4F; --board-edge: #3C8862; --pad: #D8A94E; --silk: #DCE6DC;
+    --tx: #E89050; --rx: #6AA6DC; --gnd: #C9CFC9;
+    --danger: #E06A62; --danger-bg: #38221F;
+    --ok-bg: #223026; --rule: #333B35; --chip-bg: #28302B;
+  }
+  :root[data-theme="light"] {
+    --bg: #F1F2EE; --panel: #FAFBF8; --ink: #1D2420; --muted: #5C6660;
+    --board: #2F6E4F; --board-edge: #24543D; --pad: #C9963F; --silk: #E9EFE9;
+    --tx: #D97A2E; --rx: #3E7DC0; --gnd: #2A2E2C;
+    --danger: #C2413A; --danger-bg: #F7E8E6;
+    --ok-bg: #E4EDE6; --rule: #D4D9D2; --chip-bg: #E8EBE5;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, sans-serif;
+         margin: 0; padding: 24px 16px 64px; }
+  main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+  h1 { font-size: 1.5rem; line-height: 1.25; margin: 0; text-wrap: balance; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  .sub { color: var(--muted); margin: 6px 0 0; font-size: .95rem; }
+  .mono, td.pin, th, .chip { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .chip { display: inline-block; background: var(--chip-bg); border-radius: 4px; padding: 1px 7px;
+          font-size: .85em; white-space: nowrap; }
+  .diagram-wrap { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px;
+                  padding: 12px; overflow-x: auto; }
+  .diagram-wrap svg { display: block; min-width: 720px; width: 100%; height: auto; }
+  section.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); font-size: .92rem; }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
+  .danger-card { background: var(--danger-bg); border-color: var(--danger); }
+  .danger-card h2 { color: var(--danger); }
+  ol.steps { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 10px; }
+  ol.steps li::marker { font-weight: 700; }
+  ul.notes { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 10px; }
+  .foot { color: var(--muted); font-size: .85rem; }
+  text { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .stale-card { background: var(--chip-bg); border-color: var(--rule); }
+</style>
+
+<main>
+  <section class="card stale-card">
+    <h2>Staleness note (added on import, 2026-11-14)</h2>
+    <p style="margin:0">This page was written for a Pi 4 with USB as Plan A. The actual bench Pi is <strong>armbench</strong>, a Pi 3B+ whose USB is dead — Plan A does not apply there. Plan B's pins (GPIO-UART: pins 6/8/10) are correct on both boards. If anything elsewhere in this repo now contradicts this page, trust the repo over this note.</p>
+  </section>
+
+  <header>
+    <h1>Arm bench hookup: Waveshare adapter → Raspberry Pi</h1>
+    <p class="sub"><strong>Plan A (today): one USB cable, jumpers at B.</strong> Plan B (when Dupont wires arrive): GPIO-UART, jumpers at A. Servo power stays on the 7.4&nbsp;V barrel supply in both plans.</p>
+  </header>
+
+  <section>
+  <h2 style="margin:0 0 10px">Plan A — USB mode (today)</h2>
+  <div class="diagram-wrap" role="img" aria-label="USB hookup: a data-capable USB cable runs from one of the Pi's four rectangular USB-A ports to the adapter's USB-C port. The Pi's own USB-C port is power input only — do not use it. Jumpers at B. The adapter's PWR LED lights when USB power arrives. Servo power from the 7.4 volt barrel supply.">
+  <svg viewBox="0 0 960 430" xmlns="http://www.w3.org/2000/svg">
+    <!-- Pi -->
+    <rect x="30" y="50" width="270" height="300" rx="14" fill="var(--board)" stroke="var(--board-edge)" stroke-width="3"/>
+    <text x="165" y="84" text-anchor="middle" fill="var(--silk)" font-size="17" font-weight="700">RASPBERRY PI 4</text>
+
+    <!-- USB-A stack (right edge) -->
+    <rect x="252" y="110" width="48" height="34" rx="4" fill="#3A3F3C" stroke="var(--silk)" stroke-width="1.5"/>
+    <rect x="252" y="152" width="48" height="34" rx="4" fill="#3A3F3C" stroke="var(--silk)" stroke-width="1.5"/>
+    <rect x="252" y="196" width="48" height="34" rx="4" fill="#274A6E" stroke="var(--silk)" stroke-width="1.5"/>
+    <rect x="252" y="238" width="48" height="34" rx="4" fill="#274A6E" stroke="var(--silk)" stroke-width="1.5"/>
+    <text x="240" y="132" text-anchor="end" fill="var(--silk)" font-size="12">USB 2.0 (black)</text>
+    <text x="240" y="174" text-anchor="end" fill="var(--silk)" font-size="12">USB 2.0 (black)</text>
+    <text x="240" y="218" text-anchor="end" fill="var(--silk)" font-size="12">USB 3.0 (blue)</text>
+    <text x="240" y="260" text-anchor="end" fill="var(--silk)" font-size="12">USB 3.0 (blue)</text>
+    <text x="165" y="300" text-anchor="middle" fill="var(--silk)" font-size="12.5" font-weight="700">any rectangular port works ✓</text>
+
+    <!-- Pi USB-C power (bottom edge) — trap -->
+    <rect x="60" y="336" width="44" height="22" rx="8" fill="#3A3F3C" stroke="var(--danger)" stroke-width="2.5"/>
+    <text x="82" y="380" text-anchor="middle" fill="var(--danger)" font-size="12.5" font-weight="800">Pi's USB-C = POWER IN</text>
+    <text x="82" y="396" text-anchor="middle" fill="var(--danger)" font-size="11.5">never the adapter cable</text>
+
+    <!-- Adapter -->
+    <rect x="620" y="70" width="300" height="230" rx="14" fill="var(--board)" stroke="var(--board-edge)" stroke-width="3"/>
+    <text x="770" y="102" text-anchor="middle" fill="var(--silk)" font-size="16" font-weight="700">BUS SERVO ADAPTER (A)</text>
+
+    <!-- USB-C on adapter (left edge) -->
+    <rect x="606" y="140" width="26" height="18" rx="8" fill="#3A3F3C" stroke="var(--silk)" stroke-width="1.5"/>
+    <text x="644" y="154" fill="var(--silk)" font-size="12.5" font-weight="700">USB-C</text>
+
+    <!-- jumpers at B -->
+    <rect x="795" y="126" width="108" height="60" rx="6" fill="var(--board-edge)"/>
+    <text x="849" y="143" text-anchor="middle" fill="var(--silk)" font-size="11">jumpers</text>
+    <rect x="806" y="150" width="40" height="26" rx="4" fill="none" stroke="var(--silk)" stroke-dasharray="4 3" stroke-width="1.5" opacity="0.6"/>
+    <text x="826" y="168" text-anchor="middle" fill="var(--silk)" font-size="13" opacity="0.6">A</text>
+    <rect x="856" y="150" width="40" height="26" rx="4" fill="var(--pad)"/>
+    <text x="876" y="168" text-anchor="middle" fill="#1D2420" font-size="14" font-weight="800">B ✓</text>
+
+    <!-- PWR LED -->
+    <circle cx="668" cy="196" r="7" fill="#E4C441">
+      <animate attributeName="opacity" values="1;0.35;1" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <text x="684" y="201" fill="var(--silk)" font-size="12.5" font-weight="700">PWR LED — should be LIT</text>
+    <text x="684" y="217" fill="var(--silk)" font-size="11" opacity="0.8">lights from USB power alone (exact spot varies;</text>
+    <text x="684" y="231" fill="var(--silk)" font-size="11" opacity="0.8">look for a small LED near the USB-C end)</text>
+
+    <!-- barrel -->
+    <rect x="860" y="240" width="60" height="38" rx="6" fill="var(--board-edge)"/>
+    <text x="890" y="264" text-anchor="middle" fill="var(--silk)" font-size="11">DC IN</text>
+    <rect x="856" y="330" width="72" height="46" rx="8" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
+    <text x="892" y="350" text-anchor="middle" fill="var(--ink)" font-size="13" font-weight="700">7.4 V</text>
+    <text x="892" y="367" text-anchor="middle" fill="var(--muted)" font-size="11">servo PSU</text>
+    <line x1="890" y1="330" x2="890" y2="278" stroke="var(--ink)" stroke-width="3.5"/>
+
+    <!-- the USB cable -->
+    <path d="M 302 170 C 440 170, 480 149, 604 149" fill="none" stroke="var(--rx)" stroke-width="6" stroke-linecap="round"/>
+    <text x="452" y="132" text-anchor="middle" fill="var(--rx)" font-size="14" font-weight="800">USB-A → USB-C · DATA cable</text>
+    <text x="452" y="196" text-anchor="middle" fill="var(--muted)" font-size="12">charge-only cables look identical and fail silently —</text>
+    <text x="452" y="212" text-anchor="middle" fill="var(--muted)" font-size="12">use the cable that connected this adapter to the Mac</text>
+  </svg>
+  </div>
+  </section>
+
+  <section>
+  <h2 style="margin:18px 0 10px">Plan B — GPIO-UART (when jumper wires arrive)</h2>
+  <div class="diagram-wrap" role="img" aria-label="Wiring diagram: Raspberry Pi pins 6, 8 and 10 connect to the Waveshare adapter's GND, TX and RX pins; the adapter's 5V pin is not connected; servo power comes from the 7.4 volt barrel supply; servos daisy-chain from the adapter.">
+  <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg">
+    <!-- ============ RASPBERRY PI (left) ============ -->
+    <rect x="30" y="60" width="230" height="330" rx="14" fill="var(--board)" stroke="var(--board-edge)" stroke-width="3"/>
+    <text x="145" y="94" text-anchor="middle" fill="var(--silk)" font-size="17" font-weight="700">RASPBERRY PI 4</text>
+    <text x="145" y="114" text-anchor="middle" fill="var(--silk)" font-size="12" opacity="0.85">40-pin header · top-left corner</text>
+
+    <!-- header block -->
+    <rect x="120" y="130" width="90" height="240" rx="6" fill="var(--board-edge)"/>
+    <!-- column guides: odd pins col x=145, even pins col x=185; rows every 44px starting y=156 -->
+    <!-- Row 1: pins 1,2 -->
+    <circle cx="145" cy="156" r="9" fill="var(--pad)" opacity="0.45"/>
+    <circle cx="185" cy="156" r="9" fill="var(--pad)" opacity="0.45"/>
+    <text x="112" y="161" text-anchor="end" fill="var(--silk)" font-size="12" opacity="0.6">1 · 3V3</text>
+    <text x="218" y="161" fill="var(--silk)" font-size="12" opacity="0.6">2 · 5V</text>
+    <!-- Row 2: pins 3,4 -->
+    <circle cx="145" cy="200" r="9" fill="var(--pad)" opacity="0.45"/>
+    <circle cx="185" cy="200" r="9" fill="var(--pad)" opacity="0.45"/>
+    <text x="112" y="205" text-anchor="end" fill="var(--silk)" font-size="12" opacity="0.6">3</text>
+    <text x="218" y="205" fill="var(--silk)" font-size="12" opacity="0.6">4 · 5V</text>
+    <!-- Row 3: pins 5,6  — pin 6 = GND (used) -->
+    <circle cx="145" cy="244" r="9" fill="var(--pad)" opacity="0.45"/>
+    <circle cx="185" cy="244" r="11" fill="var(--gnd)" stroke="var(--silk)" stroke-width="2.5"/>
+    <text x="112" y="249" text-anchor="end" fill="var(--silk)" font-size="12" opacity="0.6">5</text>
+    <text x="218" y="249" fill="var(--silk)" font-size="13" font-weight="700">6 · GND</text>
+    <!-- Row 4: pins 7,8 — pin 8 = TXD (used) -->
+    <circle cx="145" cy="288" r="9" fill="var(--pad)" opacity="0.45"/>
+    <circle cx="185" cy="288" r="11" fill="var(--tx)" stroke="var(--silk)" stroke-width="2.5"/>
+    <text x="112" y="293" text-anchor="end" fill="var(--silk)" font-size="12" opacity="0.6">7</text>
+    <text x="218" y="293" fill="var(--silk)" font-size="13" font-weight="700">8 · TXD</text>
+    <!-- Row 5: pins 9,10 — pin 10 = RXD (used) -->
+    <circle cx="145" cy="332" r="9" fill="var(--pad)" opacity="0.45"/>
+    <circle cx="185" cy="332" r="11" fill="var(--rx)" stroke="var(--silk)" stroke-width="2.5"/>
+    <text x="112" y="337" text-anchor="end" fill="var(--silk)" font-size="12" opacity="0.6">9 · GND</text>
+    <text x="218" y="337" fill="var(--silk)" font-size="13" font-weight="700">10 · RXD</text>
+
+    <!-- corner hint -->
+    <text x="42" y="384" fill="var(--silk)" font-size="11" opacity="0.7">pin 1 is nearest the SD-card corner</text>
+
+    <!-- ============ WAVESHARE ADAPTER (right) ============ -->
+    <rect x="620" y="60" width="300" height="250" rx="14" fill="var(--board)" stroke="var(--board-edge)" stroke-width="3"/>
+    <text x="770" y="94" text-anchor="middle" fill="var(--silk)" font-size="17" font-weight="700">BUS SERVO ADAPTER (A)</text>
+
+    <!-- jumper block -->
+    <rect x="795" y="112" width="108" height="64" rx="6" fill="var(--board-edge)"/>
+    <text x="849" y="130" text-anchor="middle" fill="var(--silk)" font-size="11">jumpers</text>
+    <rect x="806" y="138" width="40" height="28" rx="4" fill="var(--pad)"/>
+    <text x="826" y="157" text-anchor="middle" fill="#1D2420" font-size="14" font-weight="800">A ✓</text>
+    <rect x="856" y="138" width="40" height="28" rx="4" fill="none" stroke="var(--silk)" stroke-dasharray="4 3" stroke-width="1.5" opacity="0.6"/>
+    <text x="876" y="157" text-anchor="middle" fill="var(--silk)" font-size="13" opacity="0.6">B</text>
+    <text x="849" y="192" text-anchor="middle" fill="var(--silk)" font-size="10.5" opacity="0.85">both caps → A (away from USB-C)</text>
+
+    <!-- UART header on adapter -->
+    <rect x="620" y="130" width="96" height="180" rx="6" fill="var(--board-edge)"/>
+    <text x="668" y="150" text-anchor="middle" fill="var(--silk)" font-size="11">UART</text>
+    <!-- 5V pin — not connected -->
+    <circle cx="648" cy="176" r="10" fill="var(--pad)" opacity="0.45"/>
+    <text x="666" y="181" fill="var(--silk)" font-size="13" opacity="0.7">5V</text>
+    <line x1="638" y1="166" x2="658" y2="186" stroke="var(--danger)" stroke-width="3.5"/>
+    <line x1="658" y1="166" x2="638" y2="186" stroke="var(--danger)" stroke-width="3.5"/>
+    <!-- RX -->
+    <circle cx="648" cy="220" r="11" fill="var(--rx)" stroke="var(--silk)" stroke-width="2.5"/>
+    <text x="666" y="225" fill="var(--silk)" font-size="13" font-weight="700">RX</text>
+    <!-- TX -->
+    <circle cx="648" cy="258" r="11" fill="var(--tx)" stroke="var(--silk)" stroke-width="2.5"/>
+    <text x="666" y="263" fill="var(--silk)" font-size="13" font-weight="700">TX</text>
+    <!-- GND -->
+    <circle cx="648" cy="294" r="11" fill="var(--gnd)" stroke="var(--silk)" stroke-width="2.5"/>
+    <text x="666" y="299" fill="var(--silk)" font-size="13" font-weight="700">GND</text>
+
+    <!-- barrel jack + PSU -->
+    <rect x="860" y="230" width="60" height="40" rx="6" fill="var(--board-edge)"/>
+    <text x="890" y="255" text-anchor="middle" fill="var(--silk)" font-size="11">DC IN</text>
+    <rect x="856" y="330" width="72" height="46" rx="8" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
+    <text x="892" y="350" text-anchor="middle" fill="var(--ink)" font-size="13" font-weight="700">7.4 V</text>
+    <text x="892" y="367" text-anchor="middle" fill="var(--muted)" font-size="11">servo PSU</text>
+    <line x1="890" y1="330" x2="890" y2="270" stroke="var(--ink)" stroke-width="3.5"/>
+    <text x="905" y="305" fill="var(--muted)" font-size="11">barrel</text>
+
+    <!-- servo chain -->
+    <rect x="700" y="330" width="52" height="40" rx="6" fill="var(--board-edge)"/>
+    <text x="726" y="355" text-anchor="middle" fill="var(--silk)" font-size="10.5">servo</text>
+    <line x1="726" y1="330" x2="726" y2="310" stroke="var(--ink)" stroke-width="3"/>
+    <rect x="762" y="330" width="52" height="40" rx="6" fill="var(--board-edge)" opacity="0.75"/>
+    <rect x="770" y="338" width="52" height="40" rx="6" fill="var(--board-edge)" opacity="0.55"/>
+    <text x="796" y="398" fill="var(--muted)" font-size="11.5">× 6 STS3215, daisy-chained (unchanged)</text>
+
+    <!-- ============ THE THREE WIRES ============ -->
+    <!-- TX wire: Pi pin 8 -> adapter TX  (TX–TX, NOT crossed) -->
+    <path d="M 196 288 C 380 288, 460 258, 637 258" fill="none" stroke="var(--tx)" stroke-width="5" stroke-linecap="round"/>
+    <text x="416" y="252" text-anchor="middle" fill="var(--tx)" font-size="14" font-weight="800">pin 8 TXD → TX</text>
+    <!-- RX wire: Pi pin 10 -> adapter RX -->
+    <path d="M 196 332 C 400 336, 480 220, 637 220" fill="none" stroke="var(--rx)" stroke-width="5" stroke-linecap="round"/>
+    <text x="416" y="310" text-anchor="middle" fill="var(--rx)" font-size="14" font-weight="800">pin 10 RXD → RX</text>
+    <!-- GND wire: Pi pin 6 -> adapter GND -->
+    <path d="M 196 244 C 430 244, 500 294, 637 294" fill="none" stroke="var(--gnd)" stroke-width="5" stroke-linecap="round"/>
+    <text x="416" y="200" text-anchor="middle" fill="var(--gnd)" font-size="14" font-weight="800">pin 6 GND → GND</text>
+
+    <!-- same-name callout -->
+    <rect x="330" y="118" width="216" height="40" rx="8" fill="var(--ok-bg)" stroke="var(--rule)"/>
+    <text x="438" y="135" text-anchor="middle" fill="var(--ink)" font-size="12.5" font-weight="700">same name ↔ same name</text>
+    <text x="438" y="151" text-anchor="middle" fill="var(--muted)" font-size="11.5">TX–TX · RX–RX (per Waveshare, not crossed)</text>
+
+    <!-- forbidden wire -->
+    <path d="M 186 168 C 380 130, 480 176, 636 176" fill="none" stroke="var(--danger)" stroke-width="4" stroke-dasharray="10 8" opacity="0.85"/>
+    <g transform="translate(408,168)">
+      <circle r="15" fill="var(--danger)"/>
+      <line x1="-7" y1="-7" x2="7" y2="7" stroke="#fff" stroke-width="3.5"/>
+      <line x1="7" y1="-7" x2="-7" y2="7" stroke="#fff" stroke-width="3.5"/>
+    </g>
+    <text x="408" y="106" text-anchor="middle" fill="var(--danger)" font-size="14" font-weight="800">NO 5V / V+ wire — ever</text>
+
+    <!-- ============ legend strip ============ -->
+    <g transform="translate(30,470)">
+      <rect x="0" y="-24" width="900" height="74" rx="10" fill="var(--panel)" stroke="var(--rule)"/>
+      <circle cx="26" cy="6" r="8" fill="var(--tx)"/><text x="42" y="11" fill="var(--ink)" font-size="13">TX signal</text>
+      <circle cx="156" cy="6" r="8" fill="var(--rx)"/><text x="172" y="11" fill="var(--ink)" font-size="13">RX signal</text>
+      <circle cx="286" cy="6" r="8" fill="var(--gnd)"/><text x="302" y="11" fill="var(--ink)" font-size="13">shared ground</text>
+      <line x1="430" y1="6" x2="470" y2="6" stroke="var(--danger)" stroke-width="4" stroke-dasharray="8 6"/>
+      <text x="482" y="11" fill="var(--ink)" font-size="13">forbidden — servo/5V power never touches the Pi</text>
+      <text x="26" y="38" fill="var(--muted)" font-size="12">Wire colors are for this diagram — any three jumper wires work. Female–female Dupont, ~20 cm.</text>
+    </g>
+  </svg>
+  </div>
+  </section>
+
+  <section class="card">
+    <h2>Pin table (same information, checklist form)</h2>
+    <table>
+      <thead><tr><th>Wire</th><th>Waveshare adapter</th><th>Raspberry Pi</th></tr></thead>
+      <tbody>
+        <tr><td class="pin"><span class="swatch" style="background:var(--tx)"></span>TX</td>
+            <td class="pin">TX (UART header)</td><td class="pin">pin 8 — GPIO14 / TXD</td></tr>
+        <tr><td class="pin"><span class="swatch" style="background:var(--rx)"></span>RX</td>
+            <td class="pin">RX (UART header)</td><td class="pin">pin 10 — GPIO15 / RXD</td></tr>
+        <tr><td class="pin"><span class="swatch" style="background:var(--gnd)"></span>GND</td>
+            <td class="pin">GND (UART header)</td><td class="pin">pin 6 — GND</td></tr>
+        <tr><td class="pin"><span class="swatch" style="background:var(--danger)"></span>5V / V+</td>
+            <td class="pin">5V pin</td><td class="pin">— not connected, nothing, never —</td></tr>
+      </tbody>
+    </table>
+    <p class="sub">Pin 1 is the corner pin nearest the SD-card slot; even pins are the row along the board edge. Counting from pin 2: <span class="mono">2, 4, <strong>6</strong>, <strong>8</strong>, <strong>10</strong></span> — your three wires are three consecutive pins in that outer row.</p>
+  </section>
+
+  <section class="card">
+    <h2>Bench sequence</h2>
+    <ol class="steps">
+      <li><strong>Power off the 7.4&nbsp;V servo supply</strong> while wiring. (The adapter is already free — nothing is plugged into the Mac; confirmed 2026-08-15.)</li>
+      <li><strong>Move both yellow jumper caps to position A</strong> — the pair of caps slides toward the far end of the board, <em>away</em> from the USB-C connector. (The "A"/"B" printed next to the two servo sockets is a different A/B — ignore that one.)</li>
+      <li><strong>Run the three wires</strong> per the table: TX→pin&nbsp;8, RX→pin&nbsp;10, GND→pin&nbsp;6. Same name to same name — Waveshare's UART labels are host-referenced, so it's deliberately <em>not</em> crossed like old-school serial.</li>
+      <li><strong>Plug the 7.4&nbsp;V barrel supply back in.</strong> Servos and adapter logic both feed from it.</li>
+      <li><strong>Tell Claude.</strong> The bus probe runs from the Pi — ping all six servo IDs, read voltages — before anything moves.</li>
+    </ol>
+  </section>
+
+  <section class="card danger-card">
+    <h2>The one wire that must never exist</h2>
+    <p style="margin:0">No power wire between the adapter and the Pi — not the adapter's 5V pin, not servo V+, nothing from the barrel-supply side. The Pi's GPIO is 3.3&nbsp;V logic at milliamps; six STS3215s pull amps at 7.4&nbsp;V. The only shared conductor is <strong>ground</strong>.</p>
+  </section>
+
+  <section class="card">
+    <h2>Looks wrong, isn't</h2>
+    <ul class="notes">
+      <li><strong>The PWR LED stays dark.</strong> It's powered by USB-C logic power, which no longer exists in this setup. The board is fine — the truth instrument is a voltage-register read from the Pi, which Claude runs at bring-up.</li>
+      <li><strong>No response on first try?</strong> Swap the TX and RX wires at the Pi end — the harmless first debug step if the not-crossed convention turns out crossed on this board revision.</li>
+    </ul>
+  </section>
+
+  <p class="foot">Pi side is already configured and verified: <span class="chip">/dev/serial0 → ttyAMA0</span> (PL011 via <span class="chip">dtoverlay=disable-bt</span>), 1,000,000 baud accepted, serial console freed. Config backups: <span class="chip">/boot/firmware/*.bak-armbench</span>.</p>
+</main>
+
+</body></html>
